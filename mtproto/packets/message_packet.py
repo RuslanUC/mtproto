@@ -4,6 +4,7 @@ from abc import ABC
 from io import BytesIO
 
 from mtproto.packets import BasePacket
+from mtproto.utils import AutoRepr
 
 
 class MessagePacket(BasePacket, ABC):
@@ -21,7 +22,7 @@ class MessagePacket(BasePacket, ABC):
         return EncryptedMessagePacket(auth_key_id, message_key, encrypted_data)
 
 
-class UnencryptedMessagePacket(MessagePacket):
+class UnencryptedMessagePacket(MessagePacket, AutoRepr):
     __slots__ = ("message_id", "message_data",)
 
     def __init__(self, message_id: int, message_data: bytes):
@@ -37,7 +38,7 @@ class UnencryptedMessagePacket(MessagePacket):
         )
 
 
-class EncryptedMessagePacket(MessagePacket):
+class EncryptedMessagePacket(MessagePacket, AutoRepr):
     __slots__ = ("auth_key_id", "message_key", "encrypted_data",)
 
     def __init__(self, auth_key_id: int, message_key: bytes, encrypted_data: bytes):

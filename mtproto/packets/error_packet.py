@@ -1,7 +1,8 @@
 from mtproto.packets import BasePacket
+from mtproto.utils import AutoRepr
 
 
-class ErrorPacket(BasePacket):
+class ErrorPacket(BasePacket, AutoRepr):
     __slots__ = ("error_code",)
 
     def __init__(self, error_code: int):

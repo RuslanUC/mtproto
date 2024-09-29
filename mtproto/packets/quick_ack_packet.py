@@ -1,7 +1,8 @@
 from mtproto.packets import BasePacket
+from mtproto.utils import AutoRepr
 
 
-class QuickAckPacket(BasePacket):
+class QuickAckPacket(BasePacket, AutoRepr):
     __slots__ = ("token",)
 
     def __init__(self, token: bytes):
