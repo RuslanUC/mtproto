@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "mtproto"
+version = "0.1.0"
+description = ""
+authors = ["RuslanUC <dev_ruslan_uc@protonmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+tgcrypto = { version = "^1.2.5", optional = true }
+pyaes = { version = "^1.6.1", optional = true }
+
+[tool.poetry.extras]
+tgcrypto = ["tgcrypto"]
+pyaes = ["pyaes"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
