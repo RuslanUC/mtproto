@@ -14,6 +14,9 @@ pyaes = { version = "^1.6.1", optional = true }
 tgcrypto = ["tgcrypto"]
 pyaes = ["pyaes"]
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

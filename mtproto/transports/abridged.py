@@ -13,7 +13,7 @@ class AbridgedTransport(BaseTransport):
         is_quick_ack = length & 0x80 == 0x80
         length &= 0x7F
 
-        if is_quick_ack and self.role == ConnectionRole.CLIENT:
+        if is_quick_ack and self.our_role == ConnectionRole.CLIENT:
             return QuickAckPacket(buf.readexactly(4)[::-1])
 
         big_length = length & 0x7F == 0x7F

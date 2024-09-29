@@ -10,7 +10,7 @@ class IntermediateTransport(BaseTransport):
             return
 
         is_quick_ack = (buf.peekexactly(1)[0] & 0x80) == 0x80
-        if is_quick_ack and self.role == ConnectionRole.CLIENT:
+        if is_quick_ack and self.our_role == ConnectionRole.CLIENT:
             return QuickAckPacket(buf.readexactly(4))
 
         length = int.from_bytes(buf.peekexactly(4), "little") & 0x7FFFFFFF

@@ -7,27 +7,37 @@ from .transports.base_transport import BaseTransport
 
 
 class Connection:
-    __slots__ = ("_role", "_buffer", "_transport", "_transport_cls", "_read_values")
+    __slots__ = ("_role", "_buffer", "_transport", "_transport_cls", "_transport_obf")
 
     def __init__(
-            self, role: ConnectionRole = ConnectionRole.CLIENT, transport_cls: type[BaseTransport] = AbridgedTransport
+            self,
+            role: ConnectionRole = ConnectionRole.CLIENT,
+            transport_cls: type[BaseTransport] = AbridgedTransport,
+            transport_obf: bool = False,
     ):
         self._role = role
         self._buffer = Buffer()
         self._transport: BaseTransport | None = None
-        self._transport_cls: transport_cls
-        self._read_values: tuple[bool, int] | None = None
+        self._transport_cls = transport_cls
+        self._transport_obf = transport_obf
 
     def receive(self, data: bytes) -> BasePacket | None:
         self._buffer.write(data)
-        if self._transport is None:
-            self._transport = BaseTransport.new(self._buffer, self._role)
+        if self._transport is None and self._role == ConnectionRole.SERVER:
+            self._transport = BaseTransport.from_buffer(self._buffer)
             if self._transport is None:
                 return
+        elif self._transport is None:
+            raise ValueError("Transport should exist when receive() method is called and role is ConnectionRole.CLIENT")
 
         return self._transport.read(self._buffer)
 
     def send(self, packet: BasePacket) -> bytes:
-        ...  # TODO: create transport for sending data
+        if self._transport is None and self._role == ConnectionRole.CLIENT:
+            self._transport = BaseTransport.new(self._buffer, self._transport_cls, self._transport_obf)
+        elif self._transport is None:
+            raise ValueError("Transport should exist when send() method is called and role is ConnectionRole.SERVER")
+
+        return self._buffer.readall() + self._transport.write(packet)
 
 

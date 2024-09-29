@@ -1,14 +1,20 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from os import urandom
 
 from mtproto import Buffer, transports, ConnectionRole
-from mtproto.crypto.aes import ctr256_decrypt
+from mtproto.crypto.aes import ctr256_decrypt, ctr256_encrypt
 from mtproto.packets import BasePacket
 
 
+HTTP_HEADER = {b"POST", b"GET ", b"HEAD", b"OPTI"}
+
+
 class BaseTransport(ABC):
+    __slots__ = ("our_role",)
+
     def __init__(self, role: ConnectionRole):
-        self.role = role
+        self.our_role = role
 
     @abstractmethod
     def read(self, buf: Buffer) -> BasePacket | None: ...
@@ -17,28 +23,28 @@ class BaseTransport(ABC):
     def write(self, packet: BasePacket) -> bytes: ...
 
     @classmethod
-    def new(cls, buf: Buffer, role: ConnectionRole, _four_ef: bool = False) -> BaseTransport | None:
+    def from_buffer(cls, buf: Buffer, _four_ef: bool = False) -> BaseTransport | None:
         ef_count = 4 if _four_ef else 1
         if (header := buf.peekexactly(ef_count)) is None:
             return
 
         if header == b"\xef" * ef_count:
             buf.readexactly(ef_count)
-            return transports.AbridgedTransport(role)
+            return transports.AbridgedTransport(ConnectionRole.SERVER)
 
         if (header := buf.peekexactly(4)) is None:
             return
 
         if header == b"\xee" * 4:
             buf.readexactly(4)
-            return transports.IntermediateTransport(role)
+            return transports.IntermediateTransport(ConnectionRole.SERVER)
         elif header == b"\xdd" * 4:
             buf.readexactly(4)
-            return transports.PaddedIntermediateTransport(role)
-        elif header in {b"POST", b"GET ", b"HEAD"}:
+            return transports.PaddedIntermediateTransport(ConnectionRole.SERVER)
+        elif header in HTTP_HEADER:
             ...  # TODO: http transport
         elif buf.peekexactly(4, 4) == b"\x00" * 4:
-            return transports.FullTransport(role)
+            return transports.FullTransport(ConnectionRole.SERVER)
         elif buf.size() < 64:
             return
 
@@ -49,7 +55,45 @@ class BaseTransport(ABC):
         decrypted = ctr256_decrypt(nonce, *encrypt)
         header = decrypted[56:56 + 4]
 
-        if (transport := BaseTransport.new(Buffer(header), role)) is None:
+        if (transport := cls.from_buffer(Buffer(header), True)) is None:
             raise ValueError(f"Unknown transport!")
 
-        return transports.ObfuscatedTransport(transport, encrypt, decrypt)
+        return transports.ObfuscatedTransport(transport, decrypt, encrypt)
+
+    @classmethod
+    def new(cls, buf: Buffer, transport_cls: type[BaseTransport], obf: bool) -> BaseTransport:
+        if obf:
+            if issubclass(transport_cls, transports.FullTransport):
+                raise ValueError("Obfuscation of \"Full\" transport is nut supported")
+            tmp_buf = Buffer()
+            nonobf_transport = cls.new(tmp_buf, transport_cls, False)
+
+            while True:
+                nonce = bytearray(urandom(64))
+                if (nonce[0] not in (0xef, 0xee, 0xdd)
+                        and bytes(nonce[:4]) not in HTTP_HEADER
+                        and nonce[4:8] != b"\x00" * 4):
+                    nonce[56:60] = tmp_buf.readexactly(1) * 4
+                    break
+
+            temp = bytearray(nonce[55:7:-1])
+            encrypt = (nonce[8:40], nonce[40:56], bytearray(1))
+            decrypt = (temp[0:32], temp[32:48], bytearray(1))
+            nonce[56:64] = ctr256_encrypt(nonce, *encrypt)[56:64]
+
+            buf.write(bytes(nonce))
+            return transports.ObfuscatedTransport(nonobf_transport, encrypt, decrypt)
+
+        if issubclass(transport_cls, transports.AbridgedTransport):
+            buf.write(b"\xef")
+            return transports.AbridgedTransport(ConnectionRole.CLIENT)
+        elif issubclass(transport_cls, transports.IntermediateTransport):
+            buf.write(b"\xee" * 4)
+            return transports.IntermediateTransport(ConnectionRole.CLIENT)
+        elif issubclass(transport_cls, transports.PaddedIntermediateTransport):
+            buf.write(b"\xdd" * 4)
+            return transports.PaddedIntermediateTransport(ConnectionRole.CLIENT)
+        elif issubclass(transport_cls, transports.FullTransport):
+            return transports.FullTransport(ConnectionRole.CLIENT)
+
+        raise ValueError(f"Unknown transport class: {transport_cls}")
