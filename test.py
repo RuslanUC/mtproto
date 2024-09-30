@@ -4,7 +4,8 @@ from random import randint
 from zlib import crc32
 
 from mtproto import ConnectionRole, Connection, transports, Buffer
-from mtproto.packets import UnencryptedMessagePacket, QuickAckPacket, ErrorPacket, EncryptedMessagePacket, BasePacket
+from mtproto.packets import UnencryptedMessagePacket, QuickAckPacket, ErrorPacket, EncryptedMessagePacket, BasePacket, \
+    DecryptedMessagePacket
 import pytest as pt
 
 from mtproto.transports.base_transport import BaseTransport
@@ -153,6 +154,50 @@ def test_separate_length(transport_cls: type[BaseTransport], transport_obf: bool
                 and (len(received.message_data) - len(small_payload)) < 16)
     else:
         assert received.message_data == small_payload
+
+
+@default_parametrize
+def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
+    if padded:
+        pt.skip(
+            "TODO: fix padded-intermediate transport messages decrypting "
+            "(transport adds additional padding, EncryptedMessagePacket.decrypt tries "
+            "to decrypt this padding and fails)"
+        )
+    auth_key = urandom(256)
+
+    srv = Connection(ConnectionRole.SERVER)
+    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+
+    to_send_decrypted = DecryptedMessagePacket(
+        urandom(8),
+        int.from_bytes(urandom(8), "little"),
+        int.from_bytes(urandom(8), "little"),
+        int.from_bytes(urandom(4), "little"),
+        urandom(1024)
+    )
+
+    to_send = cli.send(to_send_decrypted.encrypt(auth_key, ConnectionRole.CLIENT))
+    received = srv.receive(to_send)
+    assert isinstance(received, EncryptedMessagePacket)
+    received = received.decrypt(auth_key, ConnectionRole.CLIENT)
+    assert isinstance(received, DecryptedMessagePacket)
+    assert received.salt == to_send_decrypted.salt
+    assert received.session_id == to_send_decrypted.session_id
+    assert received.message_id == to_send_decrypted.message_id
+    assert received.seq_no == to_send_decrypted.seq_no
+    assert received.data == to_send_decrypted.data
+
+    to_send = srv.send(to_send_decrypted.encrypt(auth_key, ConnectionRole.SERVER))
+    received = cli.receive(to_send)
+    assert isinstance(received, EncryptedMessagePacket)
+    received = received.decrypt(auth_key, ConnectionRole.SERVER)
+    assert isinstance(received, DecryptedMessagePacket)
+    assert received.salt == to_send_decrypted.salt
+    assert received.session_id == to_send_decrypted.session_id
+    assert received.message_id == to_send_decrypted.message_id
+    assert received.seq_no == to_send_decrypted.seq_no
+    assert received.data == to_send_decrypted.data
 
 
 def test_full_obf_raises() -> None:
