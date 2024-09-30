@@ -87,12 +87,12 @@ class BaseTransport(ABC):
         if issubclass(transport_cls, transports.AbridgedTransport):
             buf.write(b"\xef")
             return transports.AbridgedTransport(ConnectionRole.CLIENT)
-        elif issubclass(transport_cls, transports.IntermediateTransport):
-            buf.write(b"\xee" * 4)
-            return transports.IntermediateTransport(ConnectionRole.CLIENT)
         elif issubclass(transport_cls, transports.PaddedIntermediateTransport):
             buf.write(b"\xdd" * 4)
             return transports.PaddedIntermediateTransport(ConnectionRole.CLIENT)
+        elif issubclass(transport_cls, transports.IntermediateTransport):
+            buf.write(b"\xee" * 4)
+            return transports.IntermediateTransport(ConnectionRole.CLIENT)
         elif issubclass(transport_cls, transports.FullTransport):
             return transports.FullTransport(ConnectionRole.CLIENT)
 

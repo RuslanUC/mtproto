@@ -1,14 +1,14 @@
 try:
     import tgcrypto
-except ImportError:
+except ImportError:  # pragma: no cover
     tgcrypto = None
 try:
     import pyaes
-except ImportError:
+except ImportError:  # pragma: no cover
     pyaes = None
 
 
-if tgcrypto is None and pyaes is None:
+if tgcrypto is None and pyaes is None:  # pragma: no cover
     raise ImportError("Expected at least one or (tgcrypto, pyaes) to be installed.")
 
 
@@ -48,12 +48,12 @@ elif pyaes is not None:
     _ctr256_decrypt = ctr
 
 
-def ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-    return _ctr256_encrypt(data, key, iv, state or bytearray(1))
+def ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray) -> bytes:
+    return _ctr256_encrypt(data, key, iv, state)
 
 
-def ctr256_decrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray = None) -> bytes:
-    return _ctr256_decrypt(data, key, iv, state or bytearray(1))
+def ctr256_decrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray) -> bytes:
+    return _ctr256_decrypt(data, key, iv, state)
 
 
 def xor(a: bytes, b: bytes) -> bytes:
