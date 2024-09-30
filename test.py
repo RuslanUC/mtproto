@@ -12,16 +12,16 @@ from mtproto.transports.base_transport import BaseTransport
 
 
 default_parameters_no_full = [
-    (transports.AbridgedTransport, False, False,),
-    (transports.AbridgedTransport, True, False,),
-    (transports.IntermediateTransport, False, False,),
-    (transports.IntermediateTransport, True, False,),
-    (transports.PaddedIntermediateTransport, False, True,),
-    (transports.PaddedIntermediateTransport, True, True,),
+    (transports.AbridgedTransport, False,),
+    (transports.AbridgedTransport, True,),
+    (transports.IntermediateTransport, False,),
+    (transports.IntermediateTransport, True,),
+    (transports.PaddedIntermediateTransport, False,),
+    (transports.PaddedIntermediateTransport, True,),
 ]
-default_parametrize = pt.mark.parametrize("transport_cls,transport_obf,padded", [
+default_parametrize = pt.mark.parametrize("transport_cls,transport_obf", [
     *default_parameters_no_full,
-    (transports.FullTransport, False, False,),
+    (transports.FullTransport, False,),
 ])
 
 
@@ -35,7 +35,7 @@ def test_no_transport():
 
 
 @default_parametrize
-def test_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
+def test_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
 
@@ -45,19 +45,15 @@ def test_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bo
     received = srv.receive(to_send)
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == message_id
-    if padded:
-        assert (received.message_data.startswith(small_payload)
-                and (len(received.message_data) - len(small_payload)) < 16)
-    else:
-        assert received.message_data == small_payload
+    assert received.message_data == small_payload
 
 
-@pt.mark.parametrize("transport_cls,transport_obf,padded,quick_ack", [
+@pt.mark.parametrize("transport_cls,transport_obf,quick_ack", [
     *[(*params, True) for params in default_parameters_no_full],
-    (transports.FullTransport, False, False, False,),
+    (transports.FullTransport, False, False,),
 ])
 def test_quick_ack(
-        transport_cls: type[BaseTransport], transport_obf: bool, padded: bool, quick_ack: bool,
+        transport_cls: type[BaseTransport], transport_obf: bool, quick_ack: bool,
 ):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
@@ -74,7 +70,7 @@ def test_quick_ack(
 
 
 @default_parametrize
-def test_error(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
+def test_error(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
 
@@ -89,7 +85,7 @@ def test_error(transport_cls: type[BaseTransport], transport_obf: bool, padded: 
 
 
 @default_parametrize
-def test_encrypted(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
+def test_encrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
 
@@ -101,14 +97,11 @@ def test_encrypted(transport_cls: type[BaseTransport], transport_obf: bool, padd
     assert isinstance(received, EncryptedMessagePacket)
     assert received.auth_key_id == key_id
     assert received.message_key == msg_id
-    if padded:
-        assert received.encrypted_data.startswith(data) and (len(received.encrypted_data) - len(data)) < 16
-    else:
-        assert received.encrypted_data == data
+    assert received.encrypted_data == data
 
 
 @default_parametrize
-def test_receive_empty(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
+def test_receive_empty(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
 
@@ -120,7 +113,7 @@ def test_receive_empty(transport_cls: type[BaseTransport], transport_obf: bool, 
 
 
 @default_parametrize
-def test_big_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
+def test_big_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
 
@@ -130,14 +123,11 @@ def test_big_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool
     received = srv.receive(to_send)
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == message_id
-    if padded:
-        assert received.message_data.startswith(big_payload) and (len(received.message_data) - len(big_payload)) < 16
-    else:
-        assert received.message_data == big_payload
+    assert received.message_data == big_payload
 
 
 @default_parametrize
-def test_separate_length(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
+def test_separate_length(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
 
@@ -149,21 +139,11 @@ def test_separate_length(transport_cls: type[BaseTransport], transport_obf: bool
     received = srv.receive(to_send[4:])
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == message_id
-    if padded:
-        assert (received.message_data.startswith(small_payload)
-                and (len(received.message_data) - len(small_payload)) < 16)
-    else:
-        assert received.message_data == small_payload
+    assert received.message_data == small_payload
 
 
 @default_parametrize
-def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool, padded: bool):
-    if padded:
-        pt.skip(
-            "TODO: fix padded-intermediate transport messages decrypting "
-            "(transport adds additional padding, EncryptedMessagePacket.decrypt tries "
-            "to decrypt this padding and fails)"
-        )
+def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool):
     auth_key = urandom(256)
 
     srv = Connection(ConnectionRole.SERVER)

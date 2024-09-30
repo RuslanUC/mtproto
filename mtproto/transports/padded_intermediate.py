@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from random import randint
 
 from . import IntermediateTransport
 from .. import Buffer
@@ -19,8 +20,12 @@ class PaddedIntermediateTransport(IntermediateTransport):
 
         buf.readexactly(4)
         data = buf.readexactly(length)
-        if len(data) > 16:
-            return MessagePacket.parse(data, is_quick_ack)
+        if length > 16:
+
+            return MessagePacket.parse(
+                data[:(length - length % 4)],  # TODO: not sure about that
+                is_quick_ack,
+            )
 
         if data[:4] == b"\xff\xff\xff\xff":  # TODO: is check for self.role == ConnectionRole.CLIENT needed?
             return QuickAckPacket(data[4:8])
@@ -33,7 +38,7 @@ class PaddedIntermediateTransport(IntermediateTransport):
             data = b"\xff\xff\xff\xff" + data
 
         buf = Buffer()
-        data += os.urandom(-len(data) % 16)
+        data += os.urandom(randint(0, 3))  # TODO: not sure about that
         buf.write(len(data).to_bytes(4, byteorder="little"))
         buf.write(data)
 
