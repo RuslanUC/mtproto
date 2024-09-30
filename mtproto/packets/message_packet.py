@@ -57,8 +57,9 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
                 self.encrypted_data
         )
 
-    def decrypt(self, auth_key: bytes, sender_role: ConnectionRole) -> DecryptedMessagePacket | None:
-        # TODO: add check for correct auth_key
+    def decrypt(self, auth_key: bytes, sender_role: ConnectionRole) -> DecryptedMessagePacket:
+        if (got_key_id := int.from_bytes(sha1(auth_key).digest()[-8:], "little")) != self.auth_key_id:
+            raise ValueError(f"Invalid auth_key: expected key with id {self.auth_key_id}, got {got_key_id}")
         aes_key, aes_iv = kdf(auth_key, self.message_key, sender_role == ConnectionRole.CLIENT)
         decrypted = ige256_decrypt(self.encrypted_data, aes_key, aes_iv)
         return DecryptedMessagePacket.parse(decrypted)
@@ -81,7 +82,7 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
         )
 
     @classmethod
-    def parse(cls, data: bytes) -> DecryptedMessagePacket:
+    def parse(cls, data: bytes, *args, **kwargs) -> DecryptedMessagePacket:
         buf = BytesIO(data)
         salt = buf.read(8)
         session_id = int.from_bytes(buf.read(8), "little")

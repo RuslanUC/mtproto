@@ -21,9 +21,8 @@ class PaddedIntermediateTransport(IntermediateTransport):
         buf.readexactly(4)
         data = buf.readexactly(length)
         if length > 16:
-
             return MessagePacket.parse(
-                data[:(length - length % 4)],  # TODO: not sure about that
+                data[:(length - length % 4)],
                 is_quick_ack,
             )
 
@@ -38,7 +37,7 @@ class PaddedIntermediateTransport(IntermediateTransport):
             data = b"\xff\xff\xff\xff" + data
 
         buf = Buffer()
-        data += os.urandom(randint(0, 3))  # TODO: not sure about that
+        data += os.urandom(randint(0, 3))
         buf.write(len(data).to_bytes(4, byteorder="little"))
         buf.write(data)
 
