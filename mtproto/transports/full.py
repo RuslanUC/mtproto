@@ -8,11 +8,11 @@ from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 
 class FullTransport(BaseTransport):
-    __slots__ = ("_seq_no",)
+    __slots__ = ("_seq_no_r", "_seq_no_w",)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._seq_no = 0
+        self._seq_no_r = self._seq_no_w = 0
 
     def read(self, buf: Buffer) -> BasePacket | None:
         if buf.size() < 4:
@@ -30,9 +30,9 @@ class FullTransport(BaseTransport):
 
         if crc != crc32(length_bytes + seq_no_bytes + data):
             return
-        if seq_no != self._seq_no:
+        if seq_no != self._seq_no_r:
             return
-        self._seq_no += 1
+        self._seq_no_r += 1
 
         if len(data) == 4:
             return ErrorPacket(int.from_bytes(data, "little", signed=True))
@@ -47,10 +47,10 @@ class FullTransport(BaseTransport):
 
         buf = Buffer()
         buf.write((len(data) + 12).to_bytes(4, byteorder="little"))
-        buf.write(self._seq_no.to_bytes(4, "little"))
+        buf.write(self._seq_no_w.to_bytes(4, "little"))
         buf.write(data)
         buf.write(crc32(buf.data()).to_bytes(4, byteorder="little"))
 
-        self._seq_no += 1
+        self._seq_no_w += 1
 
         return buf.data()
