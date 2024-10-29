@@ -34,3 +34,12 @@ class IntermediateTransport(BaseTransport):
         buf.write(data)
 
         return buf.data()
+
+    def has_packet(self, buf: Buffer) -> bool:
+        if buf.size() < 4:
+            return False
+        if buf.peekexactly(1)[0] & 0x80 == 0x80:
+            return True
+
+        length = int.from_bytes(buf.peekexactly(4), "little") & 0x7FFFFFFF
+        return buf.size() >= (length + 4)

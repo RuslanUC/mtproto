@@ -1,4 +1,3 @@
-from abc import ABC
 from os import urandom
 from random import randint
 from zlib import crc32
@@ -178,6 +177,46 @@ def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool
     assert received.message_id == to_send_decrypted.message_id
     assert received.seq_no == to_send_decrypted.seq_no
     assert received.data == to_send_decrypted.data
+
+
+@default_parametrize
+def test_has_packet(transport_cls: type[BaseTransport], transport_obf: bool):
+    srv = Connection(ConnectionRole.SERVER)
+    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+
+    assert not srv.has_packet()
+    assert not cli.has_packet()
+
+    to_send = b""
+    packets = []
+    for i in range(16):
+        packets.append(packet := UnencryptedMessagePacket(i, urandom(16)))
+        to_send += cli.send(packet)
+
+    received = srv.receive(to_send)
+    assert isinstance(received, UnencryptedMessagePacket)
+    assert received.message_id == 0
+    assert received.message_data == packets[0].message_data
+
+    if transport_obf:
+        print(srv._buffer._data, srv._transport._decrypt)
+
+    for i in range(1, 16):
+        #f transport_obf:
+        #   print(srv._buffer.size(), srv._buffer._data[:16], srv._transport._decrypt[2])
+        assert srv.has_packet()
+        #if transport_obf:
+        #    print(srv._buffer.size(), srv._buffer._data[:16], srv._transport._decrypt[2])
+        received = srv.receive()
+        #if transport_obf:
+        #    print(srv._buffer.size(), srv._buffer._data[:16], srv._transport._decrypt[2])
+        assert isinstance(received, UnencryptedMessagePacket)
+        assert received.message_id == i
+        assert received.message_data == packets[i].message_data
+
+        print(i)
+
+    assert not srv.has_packet()
 
 
 def test_full_obf_raises() -> None:

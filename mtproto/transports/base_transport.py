@@ -22,6 +22,9 @@ class BaseTransport(ABC):
     @abstractmethod
     def write(self, packet: BasePacket) -> bytes: ...
 
+    @abstractmethod
+    def has_packet(self, buf: Buffer) -> bool: ...
+
     @classmethod
     def from_buffer(cls, buf: Buffer, _four_ef: bool = False) -> BaseTransport | None:
         ef_count = 4 if _four_ef else 1

@@ -48,36 +48,31 @@ class ObfuscatedBuffer(Buffer):
         self._buffer = data
         self._encrypt = encrypt
         self._decrypt = decrypt
-        self._decrypted = b""
-
-    def _decrypt_until(self, n: int) -> None:
-        n -= len(self._decrypted)
-        if n <= 0:
-            return
-        self._decrypted += ctr256_decrypt(self._buffer.readexactly(n), *self._decrypt)
 
     def size(self) -> int:
-        return len(self._decrypted) + self._buffer.size()
+        return self._buffer.size()
 
     def readexactly(self, n: int) -> bytes | None:
         if self.size() < n:
             return
 
-        self._decrypt_until(n)
-        data, self._decrypted = self._decrypted[:n], self._decrypted[n:]
-        return data
+        return ctr256_decrypt(self._buffer.readexactly(n), *self._decrypt)
 
     def readall(self) -> bytes:
-        self._decrypt_until(self.size())
-        data, self._decrypted = self._decrypted, b""
-        return data
+        return ctr256_decrypt(self._buffer.readall(), *self._decrypt)
 
     def peekexactly(self, n: int, offset: int = 0) -> bytes | None:
         if self.size() < (n + offset):
             return
 
-        self._decrypt_until(n + offset)
-        return self._decrypted[offset:offset+n]
+        # Backup state
+        *dec, state = self._decrypt
+        #old_iv = bytes(dec[1])
+        new_state = bytearray(state)
+        encrypted = self._buffer.peekexactly(n + offset)
+        d = ctr256_decrypt(encrypted, *dec, new_state)
+        #print(f"decrypted: {encrypted} -> {d}, state: {state} -> {new_state}")
+        return d[offset:offset+n]
 
     def write(self, data: bytes) -> None:
         self._buffer.write(ctr256_encrypt(data, *self._encrypt))

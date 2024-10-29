@@ -42,3 +42,10 @@ class PaddedIntermediateTransport(IntermediateTransport):
         buf.write(data)
 
         return buf.data()
+
+    def has_packet(self, buf: Buffer) -> bool:
+        if buf.size() < 4:
+            return False
+
+        length = int.from_bytes(buf.peekexactly(4), "little") & 0x7FFFFFFF
+        return buf.size() >= (length + 4)

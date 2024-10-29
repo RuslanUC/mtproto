@@ -47,3 +47,19 @@ class AbridgedTransport(BaseTransport):
 
         buf.write(data)
         return buf.data()
+
+    def has_packet(self, buf: Buffer) -> bool:
+        if buf.size() < 4:
+            return False
+        length = buf.peekexactly(1)[0]
+        if length & 0x80 == 0x80:
+            return True
+        length &= 0x7F
+
+        length_size = 1
+        if length & 0x7F == 0x7F:
+            length_size = 4
+            length = int.from_bytes(buf.peekexactly(3, 1), "little")
+
+        length *= 4
+        return buf.size() >= (length + length_size)

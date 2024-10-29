@@ -54,3 +54,10 @@ class FullTransport(BaseTransport):
         self._seq_no_w += 1
 
         return buf.data()
+
+    def has_packet(self, buf: Buffer) -> bool:
+        if buf.size() < 4:
+            return False
+
+        length = int.from_bytes(buf.peekexactly(4), "little")
+        return buf.size() >= length

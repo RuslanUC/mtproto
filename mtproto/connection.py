@@ -21,7 +21,7 @@ class Connection:
         self._transport_cls = transport_cls
         self._transport_obf = transport_obf
 
-    def receive(self, data: bytes) -> BasePacket | None:
+    def receive(self, data: bytes = b"") -> BasePacket | None:
         self._buffer.write(data)
         if self._transport is None and self._role == ConnectionRole.SERVER:
             self._transport = BaseTransport.from_buffer(self._buffer)
@@ -39,5 +39,8 @@ class Connection:
             raise ValueError("Transport should exist when send() method is called and role is ConnectionRole.SERVER")
 
         return self._buffer.readall() + self._transport.write(packet)
+
+    def has_packet(self) -> bool:
+        return self._transport is not None and self._transport.has_packet(self._buffer)
 
 

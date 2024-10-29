@@ -12,7 +12,10 @@ except ImportError:  # pragma: no cover
 
 
 if tgcrypto is None and pyaes is None:  # pragma: no cover
-    raise ImportError("Expected at least one or (tgcrypto, pyaes) to be installed.")
+    raise ImportWarning(
+        "Expected at least one or (tgcrypto, pyaes) to be installed. "
+        "You wont be able to use obfuscated transports or mtproto messages encryption/decryption."
+    )
 
 
 if tgcrypto is not None:
@@ -21,6 +24,7 @@ if tgcrypto is not None:
     _ige256_encrypt = tgcrypto.ige256_encrypt
     _ige256_decrypt = tgcrypto.ige256_decrypt
 elif pyaes is not None:
+    # https://github.com/pyrogram/pyrogram/blob/39694a29497aee87d6ee91155e9b7570b7849aa9/pyrogram/crypto/aes.py#L105
     def ctr(data: bytes, key: bytes, iv: bytearray, state: bytearray) -> bytes:
         cipher = pyaes.AES(key)
 
@@ -57,6 +61,7 @@ elif pyaes is not None:
         )
 
 
+    # https://github.com/pyrogram/pyrogram/blob/39694a29497aee87d6ee91155e9b7570b7849aa9/pyrogram/crypto/aes.py#L85
     def ige(data: bytes, key: bytes, iv: bytes, encrypt: bool) -> bytes:
         cipher = pyaes.AES(key)
 
@@ -81,6 +86,18 @@ elif pyaes is not None:
     _ctr256_decrypt = ctr
     _ige256_encrypt = partial(ige, encrypt=True)
     _ige256_decrypt = partial(ige, encrypt=False)
+else:  # pragma: no cover
+    def _no_crypto_library(*args, **kwargs):
+        raise RuntimeError(
+            "To use obfuscated transports and mtproto messages encryption/decryption, "
+            "you need to install either pyaes or tgcrypto."
+        )
+
+
+    _ctr256_encrypt = _no_crypto_library
+    _ctr256_decrypt = _no_crypto_library
+    _ige256_encrypt = _no_crypto_library
+    _ige256_decrypt = _no_crypto_library
 
 
 def ctr256_encrypt(data: bytes, key: bytes, iv: bytearray, state: bytearray) -> bytes:
