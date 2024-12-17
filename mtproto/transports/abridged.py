@@ -22,7 +22,7 @@ class AbridgedTransport(BaseTransport):
             length = int.from_bytes(self.buffer.peekexactly(3, 1), "little")
 
         length *= 4
-        if self.buffer.size() < length:
+        if self.buffer.size() < (length + 4 if big_length else 1):
             return
 
         self.buffer.readexactly(4 if big_length else 1)
