@@ -4,22 +4,21 @@ import os
 from random import randint
 
 from . import IntermediateTransport
-from .. import Buffer
 from ..packets import BasePacket, QuickAckPacket, MessagePacket, ErrorPacket
 
 
 class PaddedIntermediateTransport(IntermediateTransport):
-    def read(self, buf: Buffer) -> BasePacket | None:
-        if buf.size() < 4:
+    def read(self) -> BasePacket | None:
+        if self.buffer.size() < 4:
             return
 
-        is_quick_ack = (buf.peekexactly(1)[0] & 0x80) == 0x80
-        length = int.from_bytes(buf.peekexactly(4), "little") & 0x7FFFFFFF
-        if buf.size() < length:
+        is_quick_ack = (self.buffer.peekexactly(1)[0] & 0x80) == 0x80
+        length = int.from_bytes(self.buffer.peekexactly(4), "little") & 0x7FFFFFFF
+        if self.buffer.size() < length:
             return
 
-        buf.readexactly(4)
-        data = buf.readexactly(length)
+        self.buffer.readexactly(4)
+        data = self.buffer.readexactly(length)
         if length > 16:
             return MessagePacket.parse(
                 data[:(length - length % 4)],
@@ -31,21 +30,18 @@ class PaddedIntermediateTransport(IntermediateTransport):
 
         return ErrorPacket(int.from_bytes(data[:4], "little", signed=True))
 
-    def write(self, packet: BasePacket) -> bytes:
+    def write(self, packet: BasePacket) -> None:
         data = packet.write()
         if isinstance(packet, QuickAckPacket):
             data = b"\xff\xff\xff\xff" + data
 
-        buf = Buffer()
         data += os.urandom(randint(0, 3))
-        buf.write(len(data).to_bytes(4, byteorder="little"))
-        buf.write(data)
+        self.buffer.write(len(data).to_bytes(4, byteorder="little"))
+        self.buffer.write(data)
 
-        return buf.data()
-
-    def has_packet(self, buf: Buffer) -> bool:
-        if buf.size() < 4:
+    def has_packet(self) -> bool:
+        if self.buffer.size() < 4:
             return False
 
-        length = int.from_bytes(buf.peekexactly(4), "little") & 0x7FFFFFFF
-        return buf.size() >= (length + 4)
+        length = int.from_bytes(self.buffer.peekexactly(4), "little") & 0x7FFFFFFF
+        return self.buffer.size() >= (length + 4)

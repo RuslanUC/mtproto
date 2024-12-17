@@ -14,19 +14,19 @@ class FullTransport(BaseTransport):
         super().__init__(*args, **kwargs)
         self._seq_no_r = self._seq_no_w = 0
 
-    def read(self, buf: Buffer) -> BasePacket | None:
-        if buf.size() < 4:
+    def read(self) -> BasePacket | None:
+        if self.buffer.size() < 4:
             return
 
-        length = int.from_bytes(buf.peekexactly(4), "little")
-        if buf.size() < length:
+        length = int.from_bytes(self.buffer.peekexactly(4), "little")
+        if self.buffer.size() < length:
             return
 
-        length_bytes = buf.readexactly(4)
-        seq_no_bytes = buf.readexactly(4)
+        length_bytes = self.buffer.readexactly(4)
+        seq_no_bytes = self.buffer.readexactly(4)
         seq_no = int.from_bytes(seq_no_bytes, "little")
-        data = buf.readexactly(length - 12)
-        crc = int.from_bytes(buf.readexactly(4), "little")
+        data = self.buffer.readexactly(length - 12)
+        crc = int.from_bytes(self.buffer.readexactly(4), "little")
 
         if crc != crc32(length_bytes + seq_no_bytes + data):
             return
@@ -39,25 +39,25 @@ class FullTransport(BaseTransport):
 
         return MessagePacket.parse(data, False)
 
-    def write(self, packet: BasePacket) -> bytes:
+    def write(self, packet: BasePacket) -> None:
         if isinstance(packet, QuickAckPacket):
             raise ValueError("\"Full\" transport does not support quick-acks.")
 
         data = packet.write()
 
-        buf = Buffer()
-        buf.write((len(data) + 12).to_bytes(4, byteorder="little"))
-        buf.write(self._seq_no_w.to_bytes(4, "little"))
-        buf.write(data)
-        buf.write(crc32(buf.data()).to_bytes(4, byteorder="little"))
+        tmp = Buffer()
+        tmp.write((len(data) + 12).to_bytes(4, byteorder="little"))
+        tmp.write(self._seq_no_w.to_bytes(4, "little"))
+        tmp.write(data)
+        tmp.write(crc32(tmp.data()).to_bytes(4, byteorder="little"))
 
         self._seq_no_w += 1
 
-        return buf.data()
+        self.buffer.write(tmp.data())
 
-    def has_packet(self, buf: Buffer) -> bool:
-        if buf.size() < 4:
+    def has_packet(self) -> bool:
+        if self.buffer.size() < 4:
             return False
 
-        length = int.from_bytes(buf.peekexactly(4), "little")
-        return buf.size() >= length
+        length = int.from_bytes(self.buffer.peekexactly(4), "little")
+        return self.buffer.size() >= length

@@ -36,16 +36,20 @@ class Buffer:
     def write(self, data: bytes) -> None:
         self._data += data
 
+    def raw_write(self, data: bytes) -> None:
+        return self.write(data)
+
+    def raw_readall(self) -> bytes:
+        return self.readall()
+
 
 class ObfuscatedBuffer(Buffer):
-    __slots__ = ("_buffer", "_encrypt", "_decrypt", "_decrypted")
+    __slots__ = ("_buffer", "_encrypt", "_decrypt")
 
-    def __init__(self, data: bytes | Buffer, encrypt: CtrTuple, decrypt: CtrTuple):
+    def __init__(self, buffer: Buffer, encrypt: CtrTuple, decrypt: CtrTuple):
         super().__init__()
 
-        if isinstance(data, bytes):
-            data = Buffer(data)
-        self._buffer = data
+        self._buffer = buffer
         self._encrypt = encrypt
         self._decrypt = decrypt
 
@@ -53,26 +57,20 @@ class ObfuscatedBuffer(Buffer):
         return self._buffer.size()
 
     def readexactly(self, n: int) -> bytes | None:
-        if self.size() < n:
-            return
-
-        return ctr256_decrypt(self._buffer.readexactly(n), *self._decrypt)
+        return self._buffer.readexactly(n)
 
     def readall(self) -> bytes:
-        return ctr256_decrypt(self._buffer.readall(), *self._decrypt)
+        return self._buffer.readall()
 
     def peekexactly(self, n: int, offset: int = 0) -> bytes | None:
-        if self.size() < (n + offset):
-            return
-
-        # Backup state
-        *dec, state = self._decrypt
-        #old_iv = bytes(dec[1])
-        new_state = bytearray(state)
-        encrypted = self._buffer.peekexactly(n + offset)
-        d = ctr256_decrypt(encrypted, *dec, new_state)
-        #print(f"decrypted: {encrypted} -> {d}, state: {state} -> {new_state}")
-        return d[offset:offset+n]
+        return self._buffer.peekexactly(n, offset)
 
     def write(self, data: bytes) -> None:
-        self._buffer.write(ctr256_encrypt(data, *self._encrypt))
+        return self._buffer.write(data)
+
+    def raw_write(self, data: bytes) -> None:
+        if data:
+            self._buffer.write(ctr256_decrypt(data, *self._decrypt))
+
+    def raw_readall(self) -> bytes:
+        return ctr256_encrypt(self._buffer.readall(), *self._encrypt)

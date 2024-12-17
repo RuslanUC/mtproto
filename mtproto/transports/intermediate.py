@@ -1,45 +1,44 @@
 from __future__ import annotations
+
 from .base_transport import BaseTransport
-from .. import Buffer, ConnectionRole
+from .. import ConnectionRole
 from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 
 class IntermediateTransport(BaseTransport):
-    def read(self, buf: Buffer) -> BasePacket | None:
-        if buf.size() < 4:
+    def read(self) -> BasePacket | None:
+        if self.buffer.size() < 4:
             return
 
-        is_quick_ack = (buf.peekexactly(1)[0] & 0x80) == 0x80
+        is_quick_ack = (self.buffer.peekexactly(1)[0] & 0x80) == 0x80
         if is_quick_ack and self.our_role == ConnectionRole.CLIENT:
-            return QuickAckPacket(buf.readexactly(4))
+            return QuickAckPacket(self.buffer.readexactly(4))
 
-        length = int.from_bytes(buf.peekexactly(4), "little") & 0x7FFFFFFF
-        if buf.size() < length:
+        length = int.from_bytes(self.buffer.peekexactly(4), "little") & 0x7FFFFFFF
+        if self.buffer.size() < length:
             return
 
-        buf.readexactly(4)
-        data = buf.readexactly(length)
+        self.buffer.readexactly(4)
+        data = self.buffer.readexactly(length)
         if len(data) == 4:
             return ErrorPacket(int.from_bytes(data, "little", signed=True))
 
         return MessagePacket.parse(data, is_quick_ack)
 
-    def write(self, packet: BasePacket) -> bytes:
+    def write(self, packet: BasePacket) -> None:
         data = packet.write()
         if isinstance(packet, QuickAckPacket):
-            return data
+            self.buffer.write(data)
+            return
 
-        buf = Buffer()
-        buf.write(len(data).to_bytes(4, byteorder="little"))
-        buf.write(data)
+        self.buffer.write(len(data).to_bytes(4, byteorder="little"))
+        self.buffer.write(data)
 
-        return buf.data()
-
-    def has_packet(self, buf: Buffer) -> bool:
-        if buf.size() < 4:
+    def has_packet(self) -> bool:
+        if self.buffer.size() < 4:
             return False
-        if buf.peekexactly(1)[0] & 0x80 == 0x80:
+        if self.buffer.peekexactly(1)[0] & 0x80 == 0x80:
             return True
 
-        length = int.from_bytes(buf.peekexactly(4), "little") & 0x7FFFFFFF
-        return buf.size() >= (length + 4)
+        length = int.from_bytes(self.buffer.peekexactly(4), "little") & 0x7FFFFFFF
+        return self.buffer.size() >= (length + 4)

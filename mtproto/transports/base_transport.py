@@ -11,19 +11,24 @@ HTTP_HEADER = {b"POST", b"GET ", b"HEAD", b"OPTI"}
 
 
 class BaseTransport(ABC):
-    __slots__ = ("our_role",)
+    __slots__ = ("our_role", "buffer",)
 
     def __init__(self, role: ConnectionRole):
         self.our_role = role
+        self.buffer = None
 
     @abstractmethod
-    def read(self, buf: Buffer) -> BasePacket | None: ...
+    def read(self) -> BasePacket | None: ...
 
     @abstractmethod
-    def write(self, packet: BasePacket) -> bytes: ...
+    def write(self, packet: BasePacket) -> None: ...
 
     @abstractmethod
-    def has_packet(self, buf: Buffer) -> bool: ...
+    def has_packet(self) -> bool: ...
+
+    def set_buffer(self, buffer: Buffer) -> Buffer:
+        self.buffer = buffer
+        return buffer
 
     @classmethod
     def from_buffer(cls, buf: Buffer, _four_ef: bool = False) -> BaseTransport | None:
