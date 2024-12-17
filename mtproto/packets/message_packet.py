@@ -7,6 +7,7 @@ from os import urandom
 
 from mtproto import ConnectionRole
 from mtproto.crypto import kdf, ige256_encrypt, ige256_decrypt
+from mtproto.crypto.aes import kdf_v1
 from mtproto.packets import BasePacket
 from mtproto.utils import AutoRepr
 
@@ -57,10 +58,13 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
                 self.encrypted_data
         )
 
-    def decrypt(self, auth_key: bytes, sender_role: ConnectionRole) -> DecryptedMessagePacket:
+    def decrypt(self, auth_key: bytes, sender_role: ConnectionRole, v1: bool = False) -> DecryptedMessagePacket:
         if (got_key_id := int.from_bytes(sha1(auth_key).digest()[-8:], "little")) != self.auth_key_id:
             raise ValueError(f"Invalid auth_key: expected key with id {self.auth_key_id}, got {got_key_id}")
-        aes_key, aes_iv = kdf(auth_key, self.message_key, sender_role == ConnectionRole.CLIENT)
+
+        kdf_func = kdf_v1 if v1 else kdf
+        aes_key, aes_iv = kdf_func(auth_key, self.message_key, sender_role == ConnectionRole.CLIENT)
+
         decrypted = ige256_decrypt(self.encrypted_data, aes_key, aes_iv)
         return DecryptedMessagePacket.parse(decrypted)
 

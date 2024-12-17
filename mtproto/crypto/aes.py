@@ -1,5 +1,5 @@
 from functools import partial
-from hashlib import sha256
+from hashlib import sha256, sha1
 
 try:
     import tgcrypto
@@ -125,6 +125,20 @@ def kdf(auth_key: bytes, msg_key: bytes, from_client: bool) -> tuple:
 
     aes_key = sha256_a[:8] + sha256_b[8:24] + sha256_a[24:32]
     aes_iv = sha256_b[:8] + sha256_a[8:24] + sha256_b[24:32]
+
+    return aes_key, aes_iv
+
+
+def kdf_v1(auth_key: bytes, msg_key: bytes, from_client: bool) -> tuple:
+    x = 0 if from_client else 8
+
+    sha1_a = sha1(msg_key + auth_key[x:x + 32]).digest()
+    sha1_b = sha1(auth_key[32 + x:32 + x + 16] + msg_key + auth_key[48 + x:48 + x + 16]).digest()
+    sha1_c = sha1(auth_key[64 + x:64 + x + 32] + msg_key).digest()
+    sha1_d = sha1(msg_key + auth_key[96 + x:96 + x + 32]).digest()
+
+    aes_key = sha1_a[0:8] + sha1_b[8:8 + 12] + sha1_c[4:4 + 12]
+    aes_iv = sha1_a[8:8 + 12] + sha1_b[0:8] + sha1_c[16:16 + 4] + sha1_d[0:8]
 
     return aes_key, aes_iv
 
