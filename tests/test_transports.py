@@ -198,23 +198,12 @@ def test_has_packet(transport_cls: type[BaseTransport], transport_obf: bool):
     assert received.message_id == 0
     assert received.message_data == packets[0].message_data
 
-    if transport_obf:
-        print(srv._buffer._data, srv._transport._decrypt)
-
     for i in range(1, 16):
-        #f transport_obf:
-        #   print(srv._buffer.size(), srv._buffer._data[:16], srv._transport._decrypt[2])
         assert srv.has_packet()
-        #if transport_obf:
-        #    print(srv._buffer.size(), srv._buffer._data[:16], srv._transport._decrypt[2])
         received = srv.receive()
-        #if transport_obf:
-        #    print(srv._buffer.size(), srv._buffer._data[:16], srv._transport._decrypt[2])
         assert isinstance(received, UnencryptedMessagePacket)
         assert received.message_id == i
         assert received.message_data == packets[i].message_data
-
-        print(i)
 
     assert not srv.has_packet()
 
@@ -233,11 +222,14 @@ def test_full_quick_ack_raises() -> None:
 
 def test_invalid_transport() -> None:
     class NotSupportedTransport(BaseTransport):
-        def read(self, buf: Buffer) -> None:
+        def read(self) -> None:
             return None
 
         def write(self, packet: BasePacket) -> bytes:
             return b""
+
+        def has_packet(self) -> bool:
+            return False
 
     with pt.raises(ValueError):
         cli = Connection(ConnectionRole.CLIENT, transport_cls=NotSupportedTransport, transport_obf=True)
@@ -262,3 +254,13 @@ def test_full_invalid_crc() -> None:
     to_send = bytearray(to_send)
     to_send[-4:] = (int.from_bytes(to_send[-4:], "little") + 1).to_bytes(4, "little")
     assert srv.receive(to_send) is None
+
+
+@default_parametrize
+def test_opposite(transport_cls: type[BaseTransport], transport_obf: bool):
+    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    opp = cli.opposite()
+
+    assert opp._role == ConnectionRole.SERVER
+    assert opp._transport_cls == transport_cls
+    assert opp._transport_obf == transport_obf

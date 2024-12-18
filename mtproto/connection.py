@@ -49,4 +49,14 @@ class Connection:
     def has_packet(self) -> bool:
         return self._transport is not None and self._transport.has_packet()
 
+    def opposite(self, require_transport: bool = True) -> Connection | None:
+        if self._transport_cls is None:
+            if require_transport:
+                raise ValueError("transport_cls is required!")
+            return
 
+        return Connection(
+            role=ConnectionRole.CLIENT if self._role is ConnectionRole.SERVER else ConnectionRole.SERVER,
+            transport_cls=self._transport_cls,
+            transport_obf=self._transport_obf,
+        )
