@@ -59,14 +59,6 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
                 self.encrypted_data
         )
 
-    def quick_ack_response(self, auth_key: bytes, sender_role: ConnectionRole) -> QuickAckPacket:
-        key_offset = 88 + (0 if sender_role == ConnectionRole.CLIENT else 8)
-        msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + self.encrypted_data).digest()
-
-        return QuickAckPacket(
-            (int.from_bytes(msg_key_large[:4], "little") | 0x80000000).to_bytes(4, "little")
-        )
-
     def decrypt(self, auth_key: bytes, sender_role: ConnectionRole, v1: bool = False) -> DecryptedMessagePacket:
         if (got_key_id := int.from_bytes(sha1(auth_key).digest()[-8:], "little")) != self.auth_key_id:
             raise ValueError(f"Invalid auth_key: expected key with id {self.auth_key_id}, got {got_key_id}")
@@ -79,14 +71,17 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
 
 
 class DecryptedMessagePacket(MessagePacket, AutoRepr):
-    __slots__ = ("salt", "session_id", "message_id", "seq_no", "data",)
+    __slots__ = ("salt", "session_id", "message_id", "seq_no", "data", "padding",)
 
-    def __init__(self, salt: bytes, session_id: int, message_id: int, seq_no: int, data: bytes):
+    def __init__(
+            self, salt: bytes, session_id: int, message_id: int, seq_no: int, data: bytes, padding: bytes | None = None
+    ):
         self.salt = salt
         self.session_id = session_id
         self.message_id = message_id
         self.seq_no = seq_no
         self.data = data
+        self.padding = padding
 
     def write(self) -> bytes:
         raise NotImplementedError(
@@ -109,6 +104,7 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
             message_id,
             seq_no,
             buf.read(length),
+            buf.read(),
         )
 
     def encrypt(self, auth_key: bytes, sender_role: ConnectionRole) -> EncryptedMessagePacket:
@@ -133,4 +129,12 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
             int.from_bytes(sha1(auth_key).digest()[-8:], "little"),
             msg_key,
             ige256_encrypt(data + padding, aes_key, aes_iv),
+        )
+
+    def quick_ack_response(self, auth_key: bytes, sender_role: ConnectionRole) -> QuickAckPacket:
+        key_offset = 88 + (0 if sender_role == ConnectionRole.CLIENT else 8)
+        msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + self.data + self.padding).digest()
+
+        return QuickAckPacket(
+            (int.from_bytes(msg_key_large[:4], "little") | 0x80000000).to_bytes(4, "little")
         )
