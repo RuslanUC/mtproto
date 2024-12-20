@@ -63,7 +63,9 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
         key_offset = 88 + (0 if sender_role == ConnectionRole.CLIENT else 8)
         msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + self.encrypted_data).digest()
 
-        return QuickAckPacket(msg_key_large[:4])
+        return QuickAckPacket(
+            (int.from_bytes(msg_key_large[:4], "little") | 0x80000000).to_bytes(4, "little")
+        )
 
     def decrypt(self, auth_key: bytes, sender_role: ConnectionRole, v1: bool = False) -> DecryptedMessagePacket:
         if (got_key_id := int.from_bytes(sha1(auth_key).digest()[-8:], "little")) != self.auth_key_id:
