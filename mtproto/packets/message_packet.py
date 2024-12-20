@@ -8,7 +8,7 @@ from os import urandom
 from mtproto import ConnectionRole
 from mtproto.crypto import kdf, ige256_encrypt, ige256_decrypt
 from mtproto.crypto.aes import kdf_v1
-from mtproto.packets import BasePacket
+from mtproto.packets import BasePacket, QuickAckPacket
 from mtproto.utils import AutoRepr
 
 
@@ -24,7 +24,7 @@ class MessagePacket(BasePacket, ABC):
 
         message_key = buf.read(16)
         encrypted_data = buf.read()
-        return EncryptedMessagePacket(auth_key_id, message_key, encrypted_data)
+        return EncryptedMessagePacket(auth_key_id, message_key, encrypted_data, needs_quick_ack)
 
 
 class UnencryptedMessagePacket(MessagePacket, AutoRepr):
@@ -44,12 +44,13 @@ class UnencryptedMessagePacket(MessagePacket, AutoRepr):
 
 
 class EncryptedMessagePacket(MessagePacket, AutoRepr):
-    __slots__ = ("auth_key_id", "message_key", "encrypted_data",)
+    __slots__ = ("auth_key_id", "message_key", "encrypted_data", "needs_quick_ack",)
 
-    def __init__(self, auth_key_id: int, message_key: bytes, encrypted_data: bytes):
+    def __init__(self, auth_key_id: int, message_key: bytes, encrypted_data: bytes, needs_quick_ack: bool = False):
         self.auth_key_id = auth_key_id
         self.message_key = message_key
         self.encrypted_data = encrypted_data
+        self.needs_quick_ack = needs_quick_ack
 
     def write(self) -> bytes:
         return (
@@ -57,6 +58,12 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
                 self.message_key +
                 self.encrypted_data
         )
+
+    def quick_ack_response(self, auth_key: bytes, sender_role: ConnectionRole) -> QuickAckPacket:
+        key_offset = 88 + (0 if sender_role == ConnectionRole.CLIENT else 8)
+        msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + self.encrypted_data).digest()
+
+        return QuickAckPacket(msg_key_large[:4])
 
     def decrypt(self, auth_key: bytes, sender_role: ConnectionRole, v1: bool = False) -> DecryptedMessagePacket:
         if (got_key_id := int.from_bytes(sha1(auth_key).digest()[-8:], "little")) != self.auth_key_id:
@@ -115,7 +122,8 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
         padding = urandom(-(len(data) + 12) % 16 + 12)
 
         # 96 = 88 + 8 (8 = incoming message (server message); 0 = outgoing (client message))
-        msg_key_large = sha256(auth_key[96: 96 + 32] + data + padding).digest()
+        key_offset = 88 + (0 if sender_role == ConnectionRole.CLIENT else 8)
+        msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + data + padding).digest()
         msg_key = msg_key_large[8:24]
         aes_key, aes_iv = kdf(auth_key, msg_key, sender_role == ConnectionRole.CLIENT)
 
