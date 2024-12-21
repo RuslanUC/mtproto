@@ -22,10 +22,11 @@ class AbridgedTransport(BaseTransport):
             length = int.from_bytes(self.rx_buffer.peekexactly(3, 1), "little")
 
         length *= 4
-        if self.rx_buffer.size() < (length + 4 if big_length else 1):
+        length_bytes = 4 if big_length else 1
+        if self.rx_buffer.size() < (length + length_bytes):
             return
 
-        self.rx_buffer.readexactly(4 if big_length else 1)
+        self.rx_buffer.readexactly(length_bytes)
         data = self.rx_buffer.readexactly(length)
         if len(data) == 4:
             return ErrorPacket(int.from_bytes(data, "little", signed=True))
