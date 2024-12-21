@@ -3,7 +3,7 @@ from __future__ import annotations
 from zlib import crc32
 
 from .base_transport import BaseTransport
-from .. import Buffer
+from ..buffer import TxBuffer
 from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 
@@ -15,18 +15,18 @@ class FullTransport(BaseTransport):
         self._seq_no_r = self._seq_no_w = 0
 
     def read(self) -> BasePacket | None:
-        if self.buffer.size() < 4:
+        if self.rx_buffer.size() < 4:
             return
 
-        length = int.from_bytes(self.buffer.peekexactly(4), "little")
-        if self.buffer.size() < length:
+        length = int.from_bytes(self.rx_buffer.peekexactly(4), "little")
+        if self.rx_buffer.size() < length:
             return
 
-        length_bytes = self.buffer.readexactly(4)
-        seq_no_bytes = self.buffer.readexactly(4)
+        length_bytes = self.rx_buffer.readexactly(4)
+        seq_no_bytes = self.rx_buffer.readexactly(4)
         seq_no = int.from_bytes(seq_no_bytes, "little")
-        data = self.buffer.readexactly(length - 12)
-        crc = int.from_bytes(self.buffer.readexactly(4), "little")
+        data = self.rx_buffer.readexactly(length - 12)
+        crc = int.from_bytes(self.rx_buffer.readexactly(4), "little")
 
         if crc != crc32(length_bytes + seq_no_bytes + data):
             return
@@ -45,7 +45,7 @@ class FullTransport(BaseTransport):
 
         data = packet.write()
 
-        tmp = Buffer()
+        tmp = TxBuffer()
         tmp.write((len(data) + 12).to_bytes(4, byteorder="little"))
         tmp.write(self._seq_no_w.to_bytes(4, "little"))
         tmp.write(data)
@@ -53,11 +53,11 @@ class FullTransport(BaseTransport):
 
         self._seq_no_w += 1
 
-        self.buffer.write(tmp.data())
+        self.tx_buffer.write(tmp)
 
     def has_packet(self) -> bool:
-        if self.buffer.size() < 4:
+        if self.rx_buffer.size() < 4:
             return False
 
-        length = int.from_bytes(self.buffer.peekexactly(4), "little")
-        return self.buffer.size() >= length
+        length = int.from_bytes(self.rx_buffer.peekexactly(4), "little")
+        return self.rx_buffer.size() >= length

@@ -1,3 +1,3 @@
-from .enums import ConnectionRole
-from .buffer import Buffer, ObfuscatedBuffer
+from .buffer import RxBuffer, TxBuffer, ObfuscatedRxBuffer, ObfuscatedTxBuffer
 from .connection import Connection
+from .enums import ConnectionRole

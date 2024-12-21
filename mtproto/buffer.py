@@ -3,17 +3,14 @@ from __future__ import annotations
 from mtproto.crypto.aes import ctr256_decrypt, ctr256_encrypt, CtrTuple
 
 
-class Buffer:
-    __slots__ = ("_data", "_pos")
+class RxBuffer:
+    __slots__ = ("_data",)
 
     def __init__(self, data: bytes = b""):
         self._data = data
 
     def size(self) -> int:
         return len(self._data)
-
-    def data(self) -> bytes:
-        return self._data
 
     def readexactly(self, n: int) -> bytes | None:
         if self.size() < n:
@@ -33,24 +30,36 @@ class Buffer:
 
         return self._data[offset:offset+n]
 
-    def write(self, data: bytes) -> None:
+    def data_received(self, data: bytes) -> None:
         self._data += data
 
-    def raw_write(self, data: bytes) -> None:
-        return self.write(data)
 
-    def raw_readall(self) -> bytes:
-        return self.readall()
+class TxBuffer:
+    __slots__ = ("_data",)
+
+    def __init__(self, data: bytes = b""):
+        self._data = data
+
+    def data(self) -> bytes:
+        return self._data
+
+    def write(self, data: bytes | TxBuffer) -> None:
+        if isinstance(data, TxBuffer):
+            data = data.get_data()
+        self._data += data
+
+    def get_data(self) -> bytes:
+        data, self._data = self._data, b""
+        return data
 
 
-class ObfuscatedBuffer(Buffer):
-    __slots__ = ("_buffer", "_encrypt", "_decrypt")
+class ObfuscatedRxBuffer(RxBuffer):
+    __slots__ = ("_buffer", "_decrypt")
 
-    def __init__(self, buffer: Buffer, encrypt: CtrTuple, decrypt: CtrTuple):
+    def __init__(self, buffer: RxBuffer, decrypt: CtrTuple):
         super().__init__()
 
         self._buffer = buffer
-        self._encrypt = encrypt
         self._decrypt = decrypt
 
     def size(self) -> int:
@@ -65,12 +74,25 @@ class ObfuscatedBuffer(Buffer):
     def peekexactly(self, n: int, offset: int = 0) -> bytes | None:
         return self._buffer.peekexactly(n, offset)
 
-    def write(self, data: bytes) -> None:
+    def data_received(self, data: bytes) -> None:
+        if data:
+            self._buffer.data_received(ctr256_decrypt(data, *self._decrypt))
+
+
+class ObfuscatedTxBuffer(TxBuffer):
+    __slots__ = ("_buffer", "_encrypt",)
+
+    def __init__(self, buffer: TxBuffer, encrypt: CtrTuple):
+        super().__init__()
+
+        self._buffer = buffer
+        self._encrypt = encrypt
+
+    def data(self) -> bytes:
+        return self._buffer.data()
+
+    def write(self, data: bytes | TxBuffer) -> None:
         return self._buffer.write(data)
 
-    def raw_write(self, data: bytes) -> None:
-        if data:
-            self._buffer.write(ctr256_decrypt(data, *self._decrypt))
-
-    def raw_readall(self) -> bytes:
-        return ctr256_encrypt(self._buffer.readall(), *self._encrypt)
+    def get_data(self) -> bytes:
+        return ctr256_encrypt(self._buffer.get_data(), *self._encrypt)

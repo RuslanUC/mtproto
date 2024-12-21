@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .base_transport import BaseTransport
-from .. import Buffer, ObfuscatedBuffer
+from ..buffer import TxBuffer, RxBuffer, ObfuscatedRxBuffer, ObfuscatedTxBuffer
 from ..crypto.aes import CtrTuple
 from ..packets import BasePacket
 
@@ -16,14 +16,15 @@ class ObfuscatedTransport(BaseTransport):
         self._encrypt = encrypt
         self._decrypt = decrypt
 
-    def set_buffer(self, buffer: Buffer) -> Buffer:
-        back_buffer = Buffer()
-        obf_buffer = ObfuscatedBuffer(back_buffer, self._encrypt, self._decrypt)
-        obf_buffer.raw_write(buffer.readall())
+    def set_buffers(self, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> tuple[RxBuffer, TxBuffer]:
+        back_rx, back_tx = RxBuffer(), TxBuffer()
+        obf_rx = ObfuscatedRxBuffer(back_rx, self._decrypt)
+        obf_tx = ObfuscatedTxBuffer(back_tx, self._encrypt)
+        obf_rx.data_received(rx_buffer.readall())
 
-        self._transport.set_buffer(back_buffer)
+        self._transport.set_buffers(back_rx, back_tx)
 
-        return obf_buffer
+        return obf_rx, obf_tx
 
     def read(self) -> BasePacket | None:
         return self._transport.read()

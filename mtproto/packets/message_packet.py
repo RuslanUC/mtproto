@@ -5,11 +5,12 @@ from hashlib import sha256, sha1
 from io import BytesIO
 from os import urandom
 
-from mtproto import ConnectionRole
 from mtproto.crypto import kdf, ige256_encrypt, ige256_decrypt
 from mtproto.crypto.aes import kdf_v1
-from mtproto.packets import BasePacket, QuickAckPacket
+from mtproto.enums import ConnectionRole
 from mtproto.utils import AutoRepr
+from .base_packet import BasePacket
+from .quick_ack_packet import QuickAckPacket
 
 
 class MessagePacket(BasePacket, ABC):
