@@ -8,7 +8,7 @@ from os import urandom
 from mtproto.crypto import kdf, ige256_encrypt, ige256_decrypt
 from mtproto.crypto.aes import kdf_v1
 from mtproto.enums import ConnectionRole
-from mtproto.utils import AutoRepr
+from mtproto.utils import AutoRepr, Long, Int
 from .base_packet import BasePacket
 from .quick_ack_packet import QuickAckPacket
 
@@ -17,10 +17,10 @@ class MessagePacket(BasePacket, ABC):
     @classmethod
     def parse(cls, payload: bytes, needs_quick_ack: bool = False) -> MessagePacket | None:
         buf = BytesIO(payload)
-        auth_key_id = int.from_bytes(buf.read(8), "little")
+        auth_key_id = Long.read(buf)
         if auth_key_id == 0:
-            message_id = int.from_bytes(buf.read(8), "little")
-            message_length = int.from_bytes(buf.read(4), "little")
+            message_id = Long.read(buf)
+            message_length = Int.read(buf)
             return UnencryptedMessagePacket(message_id, buf.read(message_length))
 
         message_key = buf.read(16)
@@ -37,9 +37,9 @@ class UnencryptedMessagePacket(MessagePacket, AutoRepr):
 
     def write(self) -> bytes:
         return (
-                (0).to_bytes(8, "little") +
-                self.message_id.to_bytes(8, "little") +
-                len(self.message_data).to_bytes(4, "little") +
+                Long.write(0) +
+                Long.write(self.message_id) +
+                Int.write(len(self.message_data)) +
                 self.message_data
         )
 
@@ -55,13 +55,13 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
 
     def write(self) -> bytes:
         return (
-                self.auth_key_id.to_bytes(8, "little") +
+                Long.write(self.auth_key_id) +
                 self.message_key +
                 self.encrypted_data
         )
 
     def decrypt(self, auth_key: bytes, sender_role: ConnectionRole, v1: bool = False) -> DecryptedMessagePacket:
-        if (got_key_id := int.from_bytes(sha1(auth_key).digest()[-8:], "little")) != self.auth_key_id:
+        if (got_key_id := Long.read_bytes(sha1(auth_key).digest()[-8:])) != self.auth_key_id:
             raise ValueError(f"Invalid auth_key: expected key with id {self.auth_key_id}, got {got_key_id}")
 
         kdf_func = kdf_v1 if v1 else kdf
@@ -94,10 +94,10 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
     def parse(cls, data: bytes, *args, **kwargs) -> DecryptedMessagePacket:
         buf = BytesIO(data)
         salt = buf.read(8)
-        session_id = int.from_bytes(buf.read(8), "little")
-        message_id = int.from_bytes(buf.read(8), "little")
-        seq_no = int.from_bytes(buf.read(4), "little")
-        length = int.from_bytes(buf.read(4), "little")
+        session_id = Long.read(buf)
+        message_id = Long.read(buf)
+        seq_no = Int.read(buf)
+        length = Int.read(buf)
 
         return cls(
             salt,
@@ -111,10 +111,10 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
     def encrypt(self, auth_key: bytes, sender_role: ConnectionRole) -> EncryptedMessagePacket:
         data = (
                 self.salt +
-                self.session_id.to_bytes(8, "little") +
-                self.message_id.to_bytes(8, "little") +
-                self.seq_no.to_bytes(4, "little") +
-                len(self.data).to_bytes(4, "little") +
+                Long.write(self.session_id) +
+                Long.write(self.message_id) +
+                Int.write(self.seq_no) +
+                Int.write(len(self.data)) +
                 self.data
         )
 
@@ -127,7 +127,7 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
         aes_key, aes_iv = kdf(auth_key, msg_key, sender_role == ConnectionRole.CLIENT)
 
         return EncryptedMessagePacket(
-            int.from_bytes(sha1(auth_key).digest()[-8:], "little"),
+            Long.read_bytes(sha1(auth_key).digest()[-8:]),
             msg_key,
             ige256_encrypt(data + padding, aes_key, aes_iv),
         )
@@ -137,5 +137,5 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
         msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + self.data + self.padding).digest()
 
         return QuickAckPacket(
-            (int.from_bytes(msg_key_large[:4], "little") | 0x80000000).to_bytes(4, "little")
+            Int.write(Int.read_bytes(msg_key_large[:4]) | 0x80000000)
         )

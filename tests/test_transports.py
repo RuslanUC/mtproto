@@ -150,9 +150,9 @@ def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool
 
     to_send_decrypted = DecryptedMessagePacket(
         urandom(8),
-        int.from_bytes(urandom(8), "little"),
-        int.from_bytes(urandom(8), "little"),
-        int.from_bytes(urandom(4), "little"),
+        int.from_bytes(urandom(8), "little") >> 1,
+        int.from_bytes(urandom(4), "little") >> 1,
+        int.from_bytes(urandom(4), "little") >> 1,
         urandom(1024)
     )
 
