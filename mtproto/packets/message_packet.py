@@ -137,5 +137,5 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
         msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + self.data + self.padding).digest()
 
         return QuickAckPacket(
-            Int.write(Int.read_bytes(msg_key_large[:4]) | 0x80000000)
+            Int.write(-abs(Int.read_bytes(msg_key_large[:4])))
         )
