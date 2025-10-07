@@ -108,23 +108,27 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
             buf.read(),
         )
 
-    def encrypt(self, auth_key: bytes, sender_role: ConnectionRole) -> EncryptedMessagePacket:
+    def encrypt(self, auth_key: bytes, sender_role: ConnectionRole, v1: bool = False) -> EncryptedMessagePacket:
         data = (
-                self.salt +
-                Long.write(self.session_id) +
-                Long.write(self.message_id) +
-                Int.write(self.seq_no) +
-                Int.write(len(self.data)) +
-                self.data
+                self.salt
+                + Long.write(self.session_id)
+                + Long.write(self.message_id)
+                + Int.write(self.seq_no)
+                + Int.write(len(self.data))
+                + self.data
         )
 
         padding = urandom(-(len(data) + 12) % 16 + 12)
 
-        # 96 = 88 + 8 (8 = incoming message (server message); 0 = outgoing (client message))
-        key_offset = 88 + (0 if sender_role == ConnectionRole.CLIENT else 8)
-        msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + data + padding).digest()
-        msg_key = msg_key_large[8:24]
-        aes_key, aes_iv = kdf(auth_key, msg_key, sender_role == ConnectionRole.CLIENT)
+        if v1:
+            msg_key = sha1(data + padding).digest()[4:20]
+            aes_key, aes_iv = kdf_v1(auth_key, msg_key, sender_role == ConnectionRole.CLIENT)
+        else:
+            # 96 = 88 + 8 (8 = incoming message (server message); 0 = outgoing (client message))
+            key_offset = 88 + (0 if sender_role == ConnectionRole.CLIENT else 8)
+            msg_key_large = sha256(auth_key[key_offset:key_offset + 32] + data + padding).digest()
+            msg_key = msg_key_large[8:24]
+            aes_key, aes_iv = kdf(auth_key, msg_key, sender_role == ConnectionRole.CLIENT)
 
         return EncryptedMessagePacket(
             Long.read_bytes(sha1(auth_key).digest()[-8:]),
