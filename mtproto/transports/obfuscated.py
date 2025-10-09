@@ -34,3 +34,6 @@ class ObfuscatedTransport(BaseTransport):
 
     def has_packet(self) -> bool:
         return self._transport.has_packet()
+
+    def peek(self) -> BasePacket | None:
+        return self._transport.peek()

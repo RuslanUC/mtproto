@@ -14,25 +14,29 @@ class FullTransport(BaseTransport):
         super().__init__(*args, **kwargs)
         self._seq_no_r = self._seq_no_w = 0
 
-    def read(self) -> BasePacket | None:
+    def read(self, *, _peek: bool = False) -> BasePacket | None:
         if self.rx_buffer.size() < 4:
-            return
+            return None
 
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little")
         if self.rx_buffer.size() < length:
-            return
+            return None
 
-        length_bytes = self.rx_buffer.readexactly(4)
-        seq_no_bytes = self.rx_buffer.readexactly(4)
-        seq_no = int.from_bytes(seq_no_bytes, "little")
-        data = self.rx_buffer.readexactly(length - 12)
-        crc = int.from_bytes(self.rx_buffer.readexactly(4), "little")
+        length_bytes = self.rx_buffer.peekexactly(4, 0) if _peek else self.rx_buffer.readexactly(4)
+        seq_no_bytes = self.rx_buffer.peekexactly(4, 4) if _peek else self.rx_buffer.readexactly(4)
+        data = self.rx_buffer.peekexactly(length - 12, 8) if _peek else self.rx_buffer.readexactly(length - 12)
+        crc_bytes = self.rx_buffer.peekexactly(4, length - 4) if _peek else self.rx_buffer.readexactly(4)
 
+        crc = int.from_bytes(crc_bytes, "little")
         if crc != crc32(length_bytes + seq_no_bytes + data):
-            return
+            return None
+
+        seq_no = int.from_bytes(seq_no_bytes, "little")
         if seq_no != self._seq_no_r:
-            return
-        self._seq_no_r += 1
+            return None
+
+        if not _peek:
+            self._seq_no_r += 1
 
         if len(data) == 4:
             return ErrorPacket(int.from_bytes(data, "little", signed=True))
@@ -61,3 +65,9 @@ class FullTransport(BaseTransport):
 
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little")
         return self.rx_buffer.size() >= length
+
+    def peek(self) -> BasePacket | None:
+        if not self.has_packet():
+            return None
+
+        return self.read(_peek=True)

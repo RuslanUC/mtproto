@@ -29,6 +29,9 @@ class BaseTransport(ABC):
     @abstractmethod
     def has_packet(self) -> bool: ...
 
+    @abstractmethod
+    def peek(self) -> BasePacket | None: ...
+
     def set_buffers(self, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> tuple[RxBuffer, TxBuffer]:
         self.rx_buffer = rx_buffer
         self.tx_buffer = tx_buffer
@@ -39,14 +42,14 @@ class BaseTransport(ABC):
     def from_buffer(cls, buf: RxBuffer, _four_ef: bool = False) -> BaseTransport | None:
         ef_count = 4 if _four_ef else 1
         if (header := buf.peekexactly(ef_count)) is None:
-            return
+            return None
 
         if header == b"\xef" * ef_count:
             buf.readexactly(ef_count)
             return transports.AbridgedTransport(ConnectionRole.SERVER)
 
         if (header := buf.peekexactly(4)) is None:
-            return
+            return None
 
         if header == b"\xee" * 4:
             buf.readexactly(4)
@@ -59,7 +62,7 @@ class BaseTransport(ABC):
         elif buf.peekexactly(4, 4) == b"\x00" * 4:
             return transports.FullTransport(ConnectionRole.SERVER)
         elif buf.size() < 64:
-            return
+            return None
 
         nonce = buf.readexactly(64)
         temp = nonce[8:56][::-1]
@@ -77,9 +80,9 @@ class BaseTransport(ABC):
     def new(cls, buf: TxBuffer, transport_cls: type[BaseTransport], obf: bool) -> BaseTransport:
         if obf:
             if issubclass(transport_cls, transports.FullTransport):
-                raise ValueError("Obfuscation of \"Full\" transport is nut supported")
+                raise ValueError("Obfuscation of \"Full\" transport is not supported")
             tmp_buf = TxBuffer()
-            nonobf_transport = cls.new(tmp_buf, transport_cls, False)
+            non_obf_transport = cls.new(tmp_buf, transport_cls, False)
 
             while True:
                 nonce = bytearray(urandom(64))
@@ -95,7 +98,7 @@ class BaseTransport(ABC):
             nonce[56:64] = ctr256_encrypt(nonce, *encrypt)[56:64]
 
             buf.write(bytes(nonce))
-            return transports.ObfuscatedTransport(nonobf_transport, encrypt, decrypt)
+            return transports.ObfuscatedTransport(non_obf_transport, encrypt, decrypt)
 
         if issubclass(transport_cls, transports.AbridgedTransport):
             buf.write(b"\xef")

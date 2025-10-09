@@ -231,6 +231,9 @@ def test_invalid_transport() -> None:
         def has_packet(self) -> bool:
             return False
 
+        def peek(self) -> BasePacket | None:
+            return None
+
     with pt.raises(ValueError):
         cli = Connection(ConnectionRole.CLIENT, transport_cls=NotSupportedTransport, transport_obf=True)
         cli.send(ErrorPacket(400))
@@ -264,3 +267,37 @@ def test_opposite(transport_cls: type[BaseTransport], transport_obf: bool):
     assert opp._role == ConnectionRole.SERVER
     assert opp._transport_cls == transport_cls
     assert opp._transport_obf == transport_obf
+
+
+@default_parametrize
+def test_peek_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool):
+    srv = Connection(ConnectionRole.SERVER)
+    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+
+    message_id_1 = int.from_bytes(urandom(2), "little")
+    message_id_2 = int.from_bytes(urandom(2), "little")
+    small_payload_1 = urandom(16)
+    small_payload_2 = urandom(16)
+    received = srv.receive(
+        cli.send(UnencryptedMessagePacket(message_id_1, small_payload_1))
+        + cli.send(UnencryptedMessagePacket(message_id_2, small_payload_2))
+    )
+    assert isinstance(received, UnencryptedMessagePacket)
+    assert received.message_id == message_id_1
+    assert received.message_data == small_payload_1
+
+    assert srv.has_packet()
+
+    peeked = srv.peek_packet()
+    assert isinstance(peeked, UnencryptedMessagePacket)
+    assert peeked.message_id == message_id_2
+    assert peeked.message_data == small_payload_2
+
+    assert srv.has_packet()
+
+    received_2 = srv.receive()
+    assert isinstance(received_2, UnencryptedMessagePacket)
+    assert received_2.message_id == message_id_2
+    assert received_2.message_data == small_payload_2
+
+    assert not srv.has_packet()

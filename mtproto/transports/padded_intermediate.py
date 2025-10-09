@@ -8,17 +8,18 @@ from ..packets import BasePacket, QuickAckPacket, MessagePacket, ErrorPacket
 
 
 class PaddedIntermediateTransport(IntermediateTransport):
-    def read(self) -> BasePacket | None:
+    def read(self, *, _peek: bool = False) -> BasePacket | None:
         if self.rx_buffer.size() < 4:
-            return
+            return None
 
         is_quick_ack = (self.rx_buffer.peekexactly(1)[0] & 0x80) == 0x80
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF
         if self.rx_buffer.size() < length:
-            return
+            return None
 
-        self.rx_buffer.readexactly(4)
-        data = self.rx_buffer.readexactly(length)
+        if not _peek:
+            self.rx_buffer.readexactly(4)
+        data = self.rx_buffer.peekexactly(length, 4) if _peek else self.rx_buffer.readexactly(length)
         if length > 16:
             return MessagePacket.parse(
                 data[:(length - length % 4)],
@@ -45,3 +46,9 @@ class PaddedIntermediateTransport(IntermediateTransport):
 
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF
         return self.rx_buffer.size() >= (length + 4)
+
+    def peek(self) -> BasePacket | None:
+        if not self.has_packet():
+            return None
+
+        return self.read(_peek=True)

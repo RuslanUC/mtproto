@@ -28,7 +28,7 @@ class Connection:
         if self._transport is None and self._role == ConnectionRole.SERVER:
             self._transport = BaseTransport.from_buffer(self._rx_buffer)
             if self._transport is None:
-                return
+                return None
             self._rx_buffer, self._tx_buffer = self._transport.set_buffers(self._rx_buffer, self._tx_buffer)
         elif self._transport is None:
             raise ValueError("Transport should exist when receive() method is called and role is ConnectionRole.CLIENT")
@@ -51,11 +51,14 @@ class Connection:
     def has_packet(self) -> bool:
         return self._transport is not None and self._transport.has_packet()
 
+    def peek_packet(self) -> BasePacket | None:
+        return self._transport.peek() if self._transport is not None else None
+
     def opposite(self, require_transport: bool = True) -> Connection | None:
         if self._transport_cls is None:
             if require_transport:
                 raise ValueError("transport_cls is required!")
-            return
+            return None
 
         return Connection(
             role=ConnectionRole.CLIENT if self._role is ConnectionRole.SERVER else ConnectionRole.SERVER,
