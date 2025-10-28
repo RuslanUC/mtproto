@@ -37,3 +37,6 @@ class ObfuscatedTransport(BaseTransport):
 
     def peek(self) -> BasePacket | None:
         return self._transport.peek()
+
+    def peek_length(self) -> int | None:
+        return self._transport.peek_length()

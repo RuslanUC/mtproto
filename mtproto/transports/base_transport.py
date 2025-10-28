@@ -32,6 +32,9 @@ class BaseTransport(ABC):
     @abstractmethod
     def peek(self) -> BasePacket | None: ...
 
+    @abstractmethod
+    def peek_length(self) -> int | None: ...
+
     def set_buffers(self, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> tuple[RxBuffer, TxBuffer]:
         self.rx_buffer = rx_buffer
         self.tx_buffer = tx_buffer

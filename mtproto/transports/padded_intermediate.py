@@ -52,3 +52,9 @@ class PaddedIntermediateTransport(IntermediateTransport):
             return None
 
         return self.read(_peek=True)
+
+    def peek_length(self) -> int | None:
+        if self.rx_buffer.size() < 4:
+            return None
+
+        return int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF

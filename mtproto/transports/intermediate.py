@@ -50,3 +50,11 @@ class IntermediateTransport(BaseTransport):
             return None
 
         return self.read(_peek=True)
+
+    def peek_length(self) -> int | None:
+        if self.rx_buffer.size() < 4:
+            return None
+        is_quick_ack = (self.rx_buffer.peekexactly(1)[0] & 0x80) == 0x80
+        if is_quick_ack and self.our_role == ConnectionRole.CLIENT:
+            return 4
+        return int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF

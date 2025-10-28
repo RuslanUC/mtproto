@@ -80,3 +80,9 @@ class AbridgedTransport(BaseTransport):
 
         return self.read(_peek=True)
 
+    def peek_length(self) -> int | None:
+        length = self._peek_length()
+        if length is None:
+            return None
+        return length[0]
+
