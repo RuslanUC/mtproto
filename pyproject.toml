@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mtproto"
-version = "0.1.3"
+version = "0.1.4"
 description = "Telegram MTProto protocol implementation"
 authors = ["RuslanUC <dev_ruslan_uc@protonmail.com>"]
 readme = "README.md"

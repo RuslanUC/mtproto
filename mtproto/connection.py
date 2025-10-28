@@ -54,6 +54,9 @@ class Connection:
     def peek_packet(self) -> BasePacket | None:
         return self._transport.peek() if self._transport is not None else None
 
+    def peek_length(self) -> int | None:
+        return self._transport.peek_length() if self._transport is not None else None
+
     def opposite(self, require_transport: bool = True) -> Connection | None:
         if self._transport_cls is None:
             if require_transport:
