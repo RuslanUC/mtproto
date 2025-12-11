@@ -14,7 +14,7 @@ class RxBuffer:
 
     def readexactly(self, n: int) -> bytes | None:
         if self.size() < n:
-            return
+            return None
 
         data, self._data = self._data[:n], self._data[n:]
 
@@ -26,7 +26,7 @@ class RxBuffer:
 
     def peekexactly(self, n: int, offset: int = 0) -> bytes | None:
         if self.size() < (n + offset):
-            return
+            return None
 
         return self._data[offset:offset+n]
 

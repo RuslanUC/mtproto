@@ -1,5 +1,5 @@
-from mtproto.packets import BasePacket
 from mtproto.utils import AutoRepr
+from .base_packet import BasePacket
 
 
 class QuickAckPacket(BasePacket, AutoRepr):

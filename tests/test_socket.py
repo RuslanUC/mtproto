@@ -4,9 +4,9 @@ from time import time
 
 import pytest as pt
 
-from mtproto import ConnectionRole, Connection, transports
-from mtproto.packets import UnencryptedMessagePacket
-from mtproto.transports.base_transport import BaseTransport
+from mtproto.transport import ConnectionRole, Connection, transports
+from mtproto.transport.packets import UnencryptedMessagePacket
+from mtproto.transport.transports.base_transport import BaseTransport
 
 default_parameters_no_full = [
     (transports.AbridgedTransport, False,),

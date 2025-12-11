@@ -3,11 +3,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from os import urandom
 
-from mtproto import transports
-from mtproto.buffer import RxBuffer, TxBuffer
 from mtproto.crypto.aes import ctr256_decrypt, ctr256_encrypt
-from mtproto.enums import ConnectionRole
-from mtproto.packets import BasePacket
+from mtproto.transport import transports
+from mtproto.transport.buffer import RxBuffer, TxBuffer
+from mtproto.transport.enums import ConnectionRole
+from mtproto.transport.packets import BasePacket
 
 HTTP_HEADER = {b"POST", b"GET ", b"HEAD", b"OPTI"}
 

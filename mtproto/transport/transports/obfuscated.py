@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from mtproto.crypto.aes import CtrTuple
 from .base_transport import BaseTransport
 from ..buffer import TxBuffer, RxBuffer, ObfuscatedRxBuffer, ObfuscatedTxBuffer
-from ..crypto.aes import CtrTuple
 from ..packets import BasePacket
 
 
