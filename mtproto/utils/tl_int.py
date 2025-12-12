@@ -6,16 +6,16 @@ class Int(int):
     SIZE = BIT_SIZE // 8
 
     @classmethod
-    def read_bytes(cls, data: bytes) -> int:
-        return int.from_bytes(data, "little", signed=True)
+    def read_bytes(cls, data: bytes, signed: bool = True) -> int:
+        return int.from_bytes(data, "little", signed=signed)
 
     @classmethod
-    def read(cls, stream: BytesIO) -> int:
-        return cls.read_bytes(stream.read(cls.SIZE))
+    def read(cls, stream: BytesIO, signed: bool = True) -> int:
+        return cls.read_bytes(stream.read(cls.SIZE), signed)
 
     @classmethod
-    def write(cls, value: int) -> bytes:
-        return value.to_bytes(cls.SIZE, "little", signed=True)
+    def write(cls, value: int, signed: bool = True) -> bytes:
+        return value.to_bytes(cls.SIZE, "little", signed=signed)
 
 
 class Long(Int):

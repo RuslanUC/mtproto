@@ -26,8 +26,12 @@ class Connection:
         self._transport_obf = obfuscated
         self._transport_params = None
 
+    def data_received(self, data: bytes | None) -> None:
+        if data:
+            self._rx_buffer.data_received(data)
+
     def receive(self, data: bytes = b"") -> BasePacket | None:
-        self._rx_buffer.data_received(data)
+        self.data_received(data)
 
         was_none = self._transport is None
         if self._transport is None and self._role is ConnectionRole.SERVER:

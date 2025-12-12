@@ -65,7 +65,7 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
             raise ValueError(f"Invalid auth_key: expected key with id {self.auth_key_id}, got {got_key_id}")
 
         kdf_func = kdf_v1 if v1 else kdf
-        aes_key, aes_iv = kdf_func(auth_key, self.message_key, sender_role == ConnectionRole.CLIENT)
+        aes_key, aes_iv = kdf_func(auth_key, self.message_key, sender_role is ConnectionRole.CLIENT)
 
         decrypted = ige256_decrypt(self.encrypted_data, aes_key, aes_iv)
         return DecryptedMessagePacket.parse(decrypted)
