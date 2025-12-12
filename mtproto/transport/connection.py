@@ -1,31 +1,36 @@
 from __future__ import annotations
 
 from .buffer import RxBuffer, TxBuffer
-from .enums import ConnectionRole
 from .packets import BasePacket
 from .transports import AbridgedTransport
-from .transports.base_transport import BaseTransport
+from .transports.base_transport import BaseTransport, BaseTransportParam
+from ..enums import ConnectionRole
 
 
 class Connection:
-    __slots__ = ("_role", "_rx_buffer", "_tx_buffer", "_transport", "_transport_cls", "_transport_obf")
+    __slots__ = (
+        "_role", "_rx_buffer", "_tx_buffer", "_transport", "_transport_cls", "_transport_obf", "_transport_params"
+    )
 
     def __init__(
             self,
             role: ConnectionRole = ConnectionRole.CLIENT,
-            transport_cls: type[BaseTransport] = AbridgedTransport,
-            transport_obf: bool = False,
+            transport: type[BaseTransport] = AbridgedTransport,
+            obfuscated: bool = False,
     ):
         self._role = role
         self._rx_buffer = RxBuffer()
         self._tx_buffer = TxBuffer()
         self._transport: BaseTransport | None = None
-        self._transport_cls = transport_cls
-        self._transport_obf = transport_obf
+        self._transport_cls = transport
+        self._transport_obf = obfuscated
+        self._transport_params = None
 
     def receive(self, data: bytes = b"") -> BasePacket | None:
         self._rx_buffer.data_received(data)
-        if self._transport is None and self._role == ConnectionRole.SERVER:
+
+        was_none = self._transport is None
+        if self._transport is None and self._role is ConnectionRole.SERVER:
             self._transport = BaseTransport.from_buffer(self._rx_buffer)
             if self._transport is None:
                 return None
@@ -33,17 +38,29 @@ class Connection:
         elif self._transport is None:
             raise ValueError("Transport should exist when receive() method is called and role is ConnectionRole.CLIENT")
 
+        if was_none and self._transport_params:
+            for param in self._transport_params:
+                self._transport.set_param(param)
+            self._transport_params = None
+
         return self._transport.read()
 
     def send(self, packet: BasePacket) -> bytes:
         initial_data = b""
-        if self._transport is None and self._role == ConnectionRole.CLIENT:
+
+        was_none = self._transport is None
+        if self._transport is None and self._role is ConnectionRole.CLIENT:
             init_buf = TxBuffer()
             self._transport = BaseTransport.new(init_buf, self._transport_cls, self._transport_obf)
             initial_data = init_buf.get_data()
             self._rx_buffer, self._tx_buffer = self._transport.set_buffers(self._rx_buffer, self._tx_buffer)
         elif self._transport is None:
             raise ValueError("Transport should exist when send() method is called and role is ConnectionRole.SERVER")
+
+        if was_none and self._transport_params:
+            for param in self._transport_params:
+                self._transport.set_param(param)
+            self._transport_params = None
 
         self._transport.write(packet)
         return initial_data + self._tx_buffer.get_data()
@@ -65,6 +82,14 @@ class Connection:
 
         return Connection(
             role=ConnectionRole.CLIENT if self._role is ConnectionRole.SERVER else ConnectionRole.SERVER,
-            transport_cls=self._transport_cls,
-            transport_obf=self._transport_obf,
+            transport=self._transport_cls,
+            obfuscated=self._transport_obf,
         )
+
+    def set_transport_param(self, param: BaseTransportParam) -> None:
+        if self._transport is not None:
+            self._transport.set_param(param)
+            return
+        if self._transport_params is None:
+            self._transport_params = []
+        self._transport_params.append(param)

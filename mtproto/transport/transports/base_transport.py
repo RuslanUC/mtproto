@@ -4,15 +4,21 @@ from abc import ABC, abstractmethod
 from os import urandom
 
 from mtproto.crypto.aes import ctr256_decrypt, ctr256_encrypt
+from mtproto.enums import ConnectionRole
 from mtproto.transport import transports
 from mtproto.transport.buffer import RxBuffer, TxBuffer
-from mtproto.transport.enums import ConnectionRole
 from mtproto.transport.packets import BasePacket
 
 HTTP_HEADER = {b"POST", b"GET ", b"HEAD", b"OPTI"}
 
 
+class BaseTransportParam:
+    __slots__ = ()
+
+
 class BaseTransport(ABC):
+    SUPPORTS_OBFUSCATION: bool
+
     __slots__ = ("our_role", "rx_buffer", "tx_buffer",)
 
     def __init__(self, role: ConnectionRole):
@@ -41,6 +47,9 @@ class BaseTransport(ABC):
 
         return rx_buffer, tx_buffer
 
+    def set_param(self, param: BaseTransportParam) -> None:
+        ...
+
     @classmethod
     def from_buffer(cls, buf: RxBuffer, _four_ef: bool = False) -> BaseTransport | None:
         ef_count = 4 if _four_ef else 1
@@ -60,8 +69,8 @@ class BaseTransport(ABC):
         elif header == b"\xdd" * 4:
             buf.readexactly(4)
             return transports.PaddedIntermediateTransport(ConnectionRole.SERVER)
-        elif header in HTTP_HEADER:
-            ...  # TODO: http transport
+        elif header == b"POST":
+            return transports.HttpTransport(ConnectionRole.SERVER)
         elif buf.peekexactly(4, 4) == b"\x00" * 4:
             return transports.FullTransport(ConnectionRole.SERVER)
         elif buf.size() < 64:
@@ -82,8 +91,8 @@ class BaseTransport(ABC):
     @classmethod
     def new(cls, buf: TxBuffer, transport_cls: type[BaseTransport], obf: bool) -> BaseTransport:
         if obf:
-            if issubclass(transport_cls, transports.FullTransport):
-                raise ValueError("Obfuscation of \"Full\" transport is not supported")
+            if not transport_cls.SUPPORTS_OBFUSCATION:
+                raise ValueError(f"\"{transport_cls.__name__}\" transport does not support obfuscation")
             tmp_buf = TxBuffer()
             non_obf_transport = cls.new(tmp_buf, transport_cls, False)
 
@@ -114,5 +123,7 @@ class BaseTransport(ABC):
             return transports.IntermediateTransport(ConnectionRole.CLIENT)
         elif issubclass(transport_cls, transports.FullTransport):
             return transports.FullTransport(ConnectionRole.CLIENT)
+        elif issubclass(transport_cls, transports.HttpTransport):
+            return transports.HttpTransport(ConnectionRole.CLIENT)
 
         raise ValueError(f"Unknown transport class: {transport_cls}")

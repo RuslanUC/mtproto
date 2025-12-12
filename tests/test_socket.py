@@ -4,9 +4,11 @@ from time import time
 
 import pytest as pt
 
-from mtproto.transport import ConnectionRole, Connection, transports
+from mtproto.enums import ConnectionRole
+from mtproto.transport import Connection, transports
 from mtproto.transport.packets import UnencryptedMessagePacket
 from mtproto.transport.transports.base_transport import BaseTransport
+from mtproto.transport.transports.http import HttpTransportParamHost
 
 default_parameters_no_full = [
     (transports.AbridgedTransport, False,),
@@ -16,6 +18,7 @@ default_parameters_no_full = [
     (transports.PaddedIntermediateTransport, False,),
     (transports.PaddedIntermediateTransport, True,),
     (transports.FullTransport, False,),
+    (transports.HttpTransport, False,),
 ]
 default_parametrize = pt.mark.parametrize("transport_cls,transport_obf", default_parameters_no_full)
 
@@ -36,7 +39,9 @@ class MsgId:
 
 @default_parametrize
 def test_socket_telegram(transport_cls: type[BaseTransport], transport_obf: bool):
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
+    if issubclass(transport_cls, transports.HttpTransport):
+        cli.set_transport_param(HttpTransportParamHost(host="149.154.167.40"))
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(("149.154.167.40", 443))

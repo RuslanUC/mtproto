@@ -2,7 +2,7 @@ from os import urandom
 
 import pytest as pt
 
-from mtproto.transport import ConnectionRole
+from mtproto import ConnectionRole
 from mtproto.transport.packets import DecryptedMessagePacket
 from mtproto.utils import Long, Int
 

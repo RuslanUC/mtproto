@@ -2,7 +2,8 @@ from os import urandom
 from random import randint
 from zlib import crc32
 
-from mtproto.transport import ConnectionRole, Connection, transports
+from mtproto.enums import ConnectionRole
+from mtproto.transport import Connection, transports
 from mtproto.transport.packets import UnencryptedMessagePacket, QuickAckPacket, ErrorPacket, EncryptedMessagePacket, \
     BasePacket, DecryptedMessagePacket
 import pytest as pt
@@ -36,7 +37,7 @@ def test_no_transport():
 @default_parametrize
 def test_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     message_id = int.from_bytes(urandom(2), "little")
     small_payload = urandom(16)
@@ -55,7 +56,7 @@ def test_quick_ack(
         transport_cls: type[BaseTransport], transport_obf: bool, quick_ack: bool,
 ):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     # Client MUST send something first
     assert srv.receive(cli.send(UnencryptedMessagePacket(0, b"1234"))) is not None
@@ -71,7 +72,7 @@ def test_quick_ack(
 @default_parametrize
 def test_error(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     # Client MUST send something first
     assert srv.receive(cli.send(UnencryptedMessagePacket(0, b"1234"))) is not None
@@ -86,7 +87,7 @@ def test_error(transport_cls: type[BaseTransport], transport_obf: bool):
 @default_parametrize
 def test_encrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     key_id = int.from_bytes(urandom(4), "little")
     msg_id = urandom(16)
@@ -102,7 +103,7 @@ def test_encrypted(transport_cls: type[BaseTransport], transport_obf: bool):
 @default_parametrize
 def test_receive_empty(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     # Client MUST send something first
     assert srv.receive(cli.send(UnencryptedMessagePacket(0, b"1234"))) is not None
@@ -114,7 +115,7 @@ def test_receive_empty(transport_cls: type[BaseTransport], transport_obf: bool):
 @default_parametrize
 def test_big_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     message_id = int.from_bytes(urandom(2), "little")
     big_payload = urandom(16 * 1024)
@@ -128,7 +129,7 @@ def test_big_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool
 @default_parametrize
 def test_separate_length(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     message_id = int.from_bytes(urandom(2), "little")
     small_payload = urandom(16)
@@ -146,7 +147,7 @@ def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool
     auth_key = urandom(256)
 
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     to_send_decrypted = DecryptedMessagePacket(
         urandom(8),
@@ -182,7 +183,7 @@ def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool
 @default_parametrize
 def test_has_packet(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     assert not srv.has_packet()
     assert not cli.has_packet()
@@ -210,18 +211,20 @@ def test_has_packet(transport_cls: type[BaseTransport], transport_obf: bool):
 
 def test_full_obf_raises() -> None:
     with pt.raises(ValueError):
-        cli = Connection(ConnectionRole.CLIENT, transport_cls=transports.FullTransport, transport_obf=True)
+        cli = Connection(ConnectionRole.CLIENT, transport=transports.FullTransport, obfuscated=True)
         cli.send(ErrorPacket(400))
 
 
 def test_full_quick_ack_raises() -> None:
     with pt.raises(ValueError):
-        cli = Connection(ConnectionRole.CLIENT, transport_cls=transports.FullTransport, transport_obf=False)
+        cli = Connection(ConnectionRole.CLIENT, transport=transports.FullTransport, obfuscated=False)
         cli.send(QuickAckPacket(b"\x80" * 4))
 
 
 def test_invalid_transport() -> None:
     class NotSupportedTransport(BaseTransport):
+        SUPPORTS_OBFUSCATION = True
+
         def read(self) -> None:
             return None
 
@@ -235,13 +238,13 @@ def test_invalid_transport() -> None:
             return None
 
     with pt.raises(ValueError):
-        cli = Connection(ConnectionRole.CLIENT, transport_cls=NotSupportedTransport, transport_obf=True)
+        cli = Connection(ConnectionRole.CLIENT, transport=NotSupportedTransport, obfuscated=True)
         cli.send(ErrorPacket(400))
 
 
 def test_full_invalid_seq_no() -> None:
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transports.FullTransport, transport_obf=False)
+    cli = Connection(ConnectionRole.CLIENT, transport=transports.FullTransport, obfuscated=False)
     to_send = cli.send(ErrorPacket(400))
     to_send = bytearray(to_send)
     to_send[4:8] = (int.from_bytes(to_send[4:8], "little") + 123).to_bytes(4, "little")
@@ -252,7 +255,7 @@ def test_full_invalid_seq_no() -> None:
 
 def test_full_invalid_crc() -> None:
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transports.FullTransport, transport_obf=False)
+    cli = Connection(ConnectionRole.CLIENT, transport=transports.FullTransport, obfuscated=False)
     to_send = cli.send(ErrorPacket(400))
     to_send = bytearray(to_send)
     to_send[-4:] = (int.from_bytes(to_send[-4:], "little") + 1).to_bytes(4, "little")
@@ -261,7 +264,7 @@ def test_full_invalid_crc() -> None:
 
 @default_parametrize
 def test_opposite(transport_cls: type[BaseTransport], transport_obf: bool):
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
     opp = cli.opposite()
 
     assert opp._role == ConnectionRole.SERVER
@@ -272,7 +275,7 @@ def test_opposite(transport_cls: type[BaseTransport], transport_obf: bool):
 @default_parametrize
 def test_peek_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
-    cli = Connection(ConnectionRole.CLIENT, transport_cls=transport_cls, transport_obf=transport_obf)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     message_id_1 = int.from_bytes(urandom(2), "little")
     message_id_2 = int.from_bytes(urandom(2), "little")

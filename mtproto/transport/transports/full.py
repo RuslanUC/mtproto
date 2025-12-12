@@ -8,6 +8,8 @@ from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 
 class FullTransport(BaseTransport):
+    SUPPORTS_OBFUSCATION = False
+
     __slots__ = ("_seq_no_r", "_seq_no_w",)
 
     def __init__(self, *args, **kwargs) -> None:

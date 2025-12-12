@@ -7,6 +7,8 @@ from ..packets import BasePacket
 
 
 class ObfuscatedTransport(BaseTransport):
+    SUPPORTS_OBFUSCATION = False
+
     __slots__ = ("_transport", "_encrypt", "_decrypt",)
 
     def __init__(self, transport: BaseTransport, encrypt: CtrTuple, decrypt: CtrTuple) -> None:

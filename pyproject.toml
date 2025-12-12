@@ -30,10 +30,12 @@ Repository = "https://github.com/RuslanUC/mtproto"
 python = "^3.9"
 tgcrypto = { version = "^1.2.5", optional = true }
 pyaes = { version = "^1.6.1", optional = true }
+h11 = {version = "^0.16.0", optional = true}
 
 [tool.poetry.extras]
 tgcrypto = ["tgcrypto"]
 pyaes = ["pyaes"]
+http = ["h11"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

@@ -8,6 +8,8 @@ from ..packets import BasePacket, QuickAckPacket, MessagePacket, ErrorPacket
 
 
 class PaddedIntermediateTransport(IntermediateTransport):
+    SUPPORTS_OBFUSCATION = True
+
     def read(self, *, _peek: bool = False) -> BasePacket | None:
         if self.rx_buffer.size() < 4:
             return None

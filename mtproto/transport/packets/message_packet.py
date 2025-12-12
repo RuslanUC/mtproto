@@ -7,7 +7,7 @@ from os import urandom
 
 from mtproto.crypto import kdf, ige256_encrypt, ige256_decrypt
 from mtproto.crypto.aes import kdf_v1
-from mtproto.transport.enums import ConnectionRole
+from mtproto.enums import ConnectionRole
 from mtproto.utils import AutoRepr, Long, Int
 from .base_packet import BasePacket
 from .quick_ack_packet import QuickAckPacket
