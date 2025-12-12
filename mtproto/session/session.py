@@ -1,19 +1,29 @@
 import bisect
 import hashlib
+from io import BytesIO
 from os import urandom
+from time import time
 
 from mtproto import ConnectionRole
 from mtproto.session.containers.message import Message
-from mtproto.session.containers.msg_container import MsgContainer
+from mtproto.session.containers.msg_container import MsgContainer, MSG_CONTAINER_ID_BYTES
 from mtproto.session.containers.msgs_ack import MsgsAck
-from mtproto.session.messages import ErrorMessage, UnencryptedMessage, BaseMessage, DataMessage, NeedAuthkey
+from mtproto.session.messages import ErrorMessage, UnencryptedMessage, BaseMessage, DataMessage, NeedAuthkey, \
+    DataMessages
 from mtproto.session.msg_id import MsgId
 from mtproto.session.seq_no import SeqNo
 from mtproto.transport import transports, Connection
 from mtproto.transport.packets import UnencryptedMessagePacket, DecryptedMessagePacket, ErrorPacket, \
     EncryptedMessagePacket
 from mtproto.transport.transports.base_transport import BaseTransport
-from mtproto.utils import Long
+from mtproto.utils import Long, Int
+
+_STRICTLRY_NOT_CONTENT_RELATED = {
+    Int.write(0x62d6b459, False),  # MsgsAck
+    Int.write(0x73f1f8dc, False),  # MsgContainer
+    Int.write(0x3072cfa1, False),  # GzipPacked
+}
+_STRICTLRY_CONTENT_RELATED = Int.write(0xf35c6d01, False)  # RpcResult
 
 
 class Session:
@@ -118,8 +128,70 @@ class Session:
             if packet.auth_key_id != self._auth_key_id:
                 self._pending_packet = packet
                 return NeedAuthkey(packet.auth_key_id)
+
             packet = packet.decrypt(self._auth_key, ConnectionRole.opposite(self._role))
-            # TODO: check salt, session_id, message_id, seq_no
-            return DataMessage(packet.data)
+
+            # TODO: ignore BindTempAuthKey
+            if packet.salt != self._salt:
+                if self._role is ConnectionRole.SERVER:
+                    ...  # TODO: send BadServerSalt
+                else:
+                    # idk, just ignore message?
+                    return None
+
+            if packet.session_id != self._session_id:
+                if self._role is ConnectionRole.SERVER:
+                    self._session_id = packet.session_id
+                    ...  # TODO: send NewSessionCreated
+                else:
+                    return None
+
+            if self._role is ConnectionRole.SERVER:
+                if packet.message_id % 4 != 0:
+                    # 18: incorrect two lower order msg_id bits
+                    #  (the server expects client message msg_id to be divisible by 4)
+                    ...  # TODO: BadMsgNotification
+                    return None
+                elif (packet.message_id >> 32) < (time() - 300):
+                    # 16: msg_id too low
+                    ...  # TODO: BadMsgNotification
+                    return None
+                elif (packet.message_id >> 32) > (time() + 30):
+                    # 17: msg_id too high
+                    ...  # TODO: BadMsgNotification
+                    return None
+                elif (packet.seq_no & 1) == 1 and packet.data[:4] in _STRICTLRY_NOT_CONTENT_RELATED:
+                    # 34: an even msg_seqno expected (irrelevant message), but odd received
+                    ...  # TODO: BadMsgNotification
+                    return None
+                elif (packet.seq_no & 1) == 0 and packet.data[:4] == _STRICTLRY_CONTENT_RELATED:
+                    # 35: odd msg_seqno expected (relevant message), but even received
+                    ...  # TODO: BadMsgNotification
+                    return None
+
+            elif self._role is ConnectionRole.CLIENT:
+                if packet.message_id % 4 not in (1, 3):
+                    # server message identifiers modulo 4 yield 1 if the message is a response to a client message,
+                    #  and 3 otherwise
+                    return None
+                elif (packet.message_id >> 32) < (time() - 300):
+                    # msg_id too low
+                    return None
+                elif (packet.message_id >> 32) > (time() + 30):
+                    # msg_id too high
+                    return None
+
+            if not packet.data.startswith(MSG_CONTAINER_ID_BYTES):
+                return DataMessage(packet.data)
+
+            container = MsgContainer.read(BytesIO(packet.data))
+            result = DataMessages([])
+
+            for message in container.messages:
+                if self._role is ConnectionRole.CLIENT and message.seq_no & 1:
+                    self.ack_msg_id(message.message_id)
+                result.messages.append(DataMessage(message.body))
+
+            return result
 
         raise ValueError(f"Unknown packet: {packet!r}")

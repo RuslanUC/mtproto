@@ -4,10 +4,10 @@ from typing import Self
 from .message import Message
 from ...utils import Int
 
+MSG_CONTAINER_ID_BYTES = Int.write(0x73f1f8dc, False)
+
 
 class MsgContainer:
-    __tl_id__ = 0x73f1f8dc
-
     __slots__ = ("messages",)
 
     def __init__(self, messages: list[Message]):
@@ -31,11 +31,11 @@ class MsgContainer:
 
     @classmethod
     def read(cls, stream: BytesIO) -> Self:
-        constructor = Int.read(stream, False)
-        if constructor != cls.__tl_id__:
-            raise ValueError(f"Expected constructor {hex(cls.__tl_id__)}, got {hex(constructor)}")
+        constructor = stream.read(4)
+        if constructor != MSG_CONTAINER_ID_BYTES:
+            raise ValueError(f"Expected constructor {MSG_CONTAINER_ID_BYTES.hex()}, got {constructor.hex()}")
 
         return cls.deserialize(stream)
 
     def write(self) -> bytes:
-        return Int.write(self.__tl_id__, False) + self.serialize()
+        return MSG_CONTAINER_ID_BYTES + self.serialize()
