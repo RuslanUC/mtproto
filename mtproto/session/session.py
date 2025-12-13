@@ -8,6 +8,8 @@ from time import time
 from mtproto import ConnectionRole
 from mtproto.session.service_messages.bad_msg_notification import BadMsgNotification
 from mtproto.session.service_messages.bad_server_salt import BadServerSalt
+from mtproto.session.service_messages.future_salts import FutureSalts
+from mtproto.session.service_messages.get_future_salts import GetFutureSalts
 from mtproto.session.service_messages.message import Message
 from mtproto.session.service_messages.msg_container import MsgContainer
 from mtproto.session.service_messages.msgs_ack import MsgsAck
@@ -23,8 +25,8 @@ from mtproto.transport.transports.base_transport import BaseTransport
 from mtproto.utils import Long, Int
 
 _STRICTLRY_NOT_CONTENT_RELATED = {
-    Int.write(0x62d6b459, False),  # MsgsAck
-    Int.write(0x73f1f8dc, False),  # MsgContainer
+    MsgsAck.__tl_id_bytes__,
+    MsgContainer.__tl_id_bytes__,
     Int.write(0x3072cfa1, False),  # GzipPacked
 }
 _RPC_RESULT_CONSTRUCTOR = Int.write(0xf35c6d01, False)  # RpcResult
@@ -37,8 +39,6 @@ _MANUALLY_PARSED_CONSTRUCTORS = {
 }
 
 class Session:
-    # TODO: fetch future salts
-
     def __init__(
             self,
             role: ConnectionRole,
@@ -60,6 +60,8 @@ class Session:
         self._pending_packet: EncryptedMessagePacket | None = None
         self._received: deque[BaseEvent] = deque()
         self._pending: dict[int, bytes] = {}
+        self._future_salts_req: int | None = None
+        self._salts_fetched_at: int = 0
 
         if auth_key is not None:
             self.set_auth_key(auth_key)
@@ -151,6 +153,8 @@ class Session:
             self._need_ack = self._need_ack[4096:]
             self.queue(MsgsAck(to_ack).write(), False, False)
 
+        self._fetch_future_salts_maybe(True)
+
         if not data and not self._queue:
             return b""
 
@@ -190,11 +194,34 @@ class Session:
         new_msg_id = self.queue(data, old_seq_no & 1 == 1, False)
         self._received.append(UpdateMessageId(old_msg_id, new_msg_id))
 
+    def _fetch_future_salts_maybe(self, force: bool = False) -> None:
+        if self._role is ConnectionRole.SERVER:
+            return
+        if self._future_salts_req is not None and (time() - self._salts_fetched_at) < 1 * 60:
+            return
+        elif not force and (time() - self._salts_fetched_at) < 5 * 60:
+            return
+
+        if self._future_salts_req is not None:
+            self._pending.pop(self._future_salts_req, None)
+
+        self._future_salts_req = self.queue(GetFutureSalts(24).write(), True)
+        self._salts_fetched_at = time()
+
     def _process_received(self, data: bytes, session_id: int, message_id: int) -> BaseEvent | None:
         constructor = data[:4]
         if constructor == _RPC_RESULT_CONSTRUCTOR:
             req_msg_id = Long.read_bytes(data[4:4 + 8])
             self._pending.pop(req_msg_id, None)
+        elif constructor == FutureSalts.__tl_id_bytes__ and Long.read_bytes(data[4:4 + 8]) == self._future_salts_req:
+            future_salts = FutureSalts.read(BytesIO(data))
+            for salt in future_salts.salts:
+                self.add_salt(salt.salt, salt.valid_since)
+
+            self._future_salts_req = None
+            self._salts_fetched_at = time()
+            return None
+
         if constructor not in _MANUALLY_PARSED_CONSTRUCTORS:
             return Data(message_id, session_id, data)
 
@@ -214,9 +241,9 @@ class Session:
             self.set_salts([
                 (obj.new_server_salt, int(time() - 30 * 60)),
             ])
-            # TODO: fetch salts
             if obj.bad_msg_id in self._pending:
                 self._requeue(obj.bad_msg_id, obj.bad_msg_seqno)
+            self._fetch_future_salts_maybe(True)
         elif isinstance(obj, BadMsgNotification):
             if obj.error_code in (16, 17):
                 self._requeue(obj.bad_msg_id, obj.bad_msg_seqno)
