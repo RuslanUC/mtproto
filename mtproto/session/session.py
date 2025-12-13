@@ -37,6 +37,8 @@ _MANUALLY_PARSED_CONSTRUCTORS = {
 }
 
 class Session:
+    # TODO: fetch future salts
+
     def __init__(
             self,
             role: ConnectionRole,
@@ -49,7 +51,7 @@ class Session:
         self._conn = Connection(role, transport, obfuscated)
         self._auth_key: bytes | None = None
         self._auth_key_id: int | None = None
-        self._salt: bytes | None = None
+        self._salts: list[tuple[bytes, int]] = []
         self._seq_no = SeqNo()
         self._msg_id = MsgId(role)
         self._session_id: int = Long.read_bytes(urandom(8)) if role is ConnectionRole.CLIENT else 0
@@ -62,7 +64,11 @@ class Session:
         if auth_key is not None:
             self.set_auth_key(auth_key)
         if salt is not None:
-            self.set_salt(salt)
+            self.set_salts([
+                (salt, int(time() - 30 * 60)),
+            ])
+        else:
+            self.set_salts([(0, 0)])
 
     def set_auth_key(self, auth_key: bytes) -> None:
         if len(auth_key) != 256:
@@ -70,13 +76,49 @@ class Session:
         self._auth_key = auth_key
         self._auth_key_id = Long.read_bytes(hashlib.sha1(auth_key).digest()[-8:])
 
-    def set_salt(self, salt: int | bytes) -> None:
-        if isinstance(salt, int):
-            self._salt = Long.write(salt)
+    def set_salts(self, salts: list[tuple[int | bytes, int]]) -> None:
+        self._salts.clear()
+        for salt, valid_from in salts:
+            if isinstance(salt, int):
+                self._salts.append((Long.write(salt), valid_from))
+                continue
+            if len(salt) != 8:
+                raise ValueError("Invalid salt: needs to be exactly 8 bytes")
+            self._salts.append((salt, valid_from))
+
+        self._salts.sort(key=lambda s: s[1])
+
+    def add_salt(self, salt: int | bytes, valid_from: int) -> None:
+        if not self._salts:
+            self._salts.append((salt, valid_from))
             return
-        if len(salt) != 8:
-            raise ValueError("Invalid salt: needs to be exactly 8 bytes")
-        self._salt = salt
+        add_idx = bisect.bisect_left(self._salts, valid_from, key=lambda s: s[1])
+        if self._salts[add_idx][1] == valid_from:
+            self._salts[add_idx] = salt, valid_from
+        else:
+            self._salts.insert(add_idx, (salt, valid_from))
+
+    def clear_salts(self) -> None:
+        older_than = time() - 60 * 60
+        remove_salts = bisect.bisect_left(self._salts, older_than, key=lambda s: s[1])
+        while remove_salts:
+            self._salts.pop(0)
+            remove_salts -= 1
+
+    def check_salt(self, salt: int | bytes) -> bool:
+        lo = bisect.bisect_left(self._salts, time() - 60 * 60, key=lambda s: s[1])
+        hi = bisect.bisect_right(self._salts, time(), key=lambda s: s[1])
+
+        salt = Long.write(salt) if isinstance(salt, int) else salt
+        for i in range(lo, hi):
+            if self._salts[i][0] == salt:
+                return True
+
+        return False
+
+    def get_salt(self) -> bytes:
+        idx = bisect.bisect_left(self._salts, time(), key=lambda s: s[1])
+        return self._salts[idx][0]
 
     def queue(self, data: bytes, content_related: bool = False, response: bool = False) -> int:
         message = Message(
@@ -122,7 +164,7 @@ class Session:
 
         return self._conn.send(
             DecryptedMessagePacket(
-                salt=self._salt,
+                salt=self.get_salt(),
                 session_id=self._session_id,
                 message_id=self._msg_id.make(response),
                 seq_no=self._seq_no.make(content_related),
@@ -140,7 +182,7 @@ class Session:
         self.queue(NewSessionCreated(
             first_msg_id=first_message_id,
             unique_id=self._session_id,
-            server_salt=Long.read_bytes(self._salt),
+            server_salt=Long.read_bytes(self.get_salt()),
         ).serialize())
 
     def _requeue(self, old_msg_id: int, old_seq_no: int) -> None:
@@ -169,7 +211,10 @@ class Session:
         elif isinstance(obj, NewSessionCreated):
             self._received.append(NewSession(self._session_id, None, None))
         elif isinstance(obj, BadServerSalt) and self._role is ConnectionRole.CLIENT:
-            self.set_salt(obj.new_server_salt)
+            self.set_salts([
+                (obj.new_server_salt, int(time() - 30 * 60)),
+            ])
+            # TODO: fetch salts
             if obj.bad_msg_id in self._pending:
                 self._requeue(obj.bad_msg_id, obj.bad_msg_seqno)
         elif isinstance(obj, BadMsgNotification):
@@ -215,14 +260,14 @@ class Session:
             packet = packet.decrypt(self._auth_key, ConnectionRole.opposite(self._role))
 
             # TODO: ignore BindTempAuthKey
-            if packet.salt != self._salt:
+            if not self.check_salt(packet.salt):
                 if self._role is ConnectionRole.SERVER:
                     self.queue(
                         BadServerSalt(
                             bad_msg_id=packet.message_id,
                             bad_msg_seqno=packet.seq_no,
                             error_code=48,
-                            new_server_salt=Long.read_bytes(self._salt),
+                            new_server_salt=Long.read_bytes(self.get_salt()),
                         ).serialize(),
                         response=True,
                     )
