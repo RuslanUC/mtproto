@@ -271,3 +271,15 @@ class Session:
             return self._process_received(packet.data, packet.session_id, packet.message_id)
 
         raise ValueError(f"Unknown packet: {packet!r}")
+
+    def get_pending(self) -> list[tuple[int, bytes]]:
+        return list(self._pending.items())
+
+    def clear_pending(self, older_than: int) -> None:
+        to_remove = []
+        for msg_id in self._pending.keys():
+            if (msg_id >> 32) < (time() - older_than):
+                to_remove.append(msg_id)
+
+        for msg_id in to_remove:
+            del self._pending[msg_id]
