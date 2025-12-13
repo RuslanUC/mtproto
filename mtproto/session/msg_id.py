@@ -1,3 +1,8 @@
+from time import time
+
+from mtproto import ConnectionRole
+
+
 class MsgId:
     __slots__ = ("_role", "_time", "_offset",)
 

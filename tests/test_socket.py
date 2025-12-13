@@ -5,6 +5,8 @@ from time import time
 import pytest as pt
 
 from mtproto.enums import ConnectionRole
+from mtproto.session import Session
+from mtproto.session.messages import UnencryptedData
 from mtproto.transport import Connection, transports
 from mtproto.transport.packets import UnencryptedMessagePacket
 from mtproto.transport.transports.base_transport import BaseTransport
@@ -61,6 +63,33 @@ def test_socket_telegram(transport_cls: type[BaseTransport], transport_obf: bool
         #print(f"Received: {recv}")
         assert isinstance(recv, UnencryptedMessagePacket)
         assert recv.message_data[:4] == b"\x05\x16\x24\x63"[::-1]
+
+        break
+
+    sock.close()
+
+
+@default_parametrize
+def test_socket_telegram_with_session(transport_cls: type[BaseTransport], transport_obf: bool):
+    session = Session(ConnectionRole.CLIENT, transport_cls, transport_obf)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect(("149.154.167.40", 443))
+
+    to_send = session.send_plain(
+        b"\xbe\x7e\x8e\xf1"[::-1] + urandom(16)  # req_pq_multi#be7e8ef1 nonce:int128
+    )
+    sock.send(to_send)
+    print(f"Sent: {to_send}")
+    while True:
+        sock_recv = sock.recv(1024)
+        recv = session.receive(sock_recv)
+        if recv is None:
+            print(f"Received partial data from socket ({sock_recv}), reading more...")
+            continue
+        print(f"Received: {recv}")
+        assert isinstance(recv, UnencryptedData)
+        assert recv.data[:4] == b"\x05\x16\x24\x63"[::-1]
 
         break
 

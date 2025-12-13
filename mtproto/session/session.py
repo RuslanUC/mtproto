@@ -13,7 +13,7 @@ from mtproto.session.service_messages.msg_container import MsgContainer
 from mtproto.session.service_messages.msgs_ack import MsgsAck
 from mtproto.session.service_messages.new_session_created import NewSessionCreated
 from mtproto.session.messages import TransportError, UnencryptedData, BaseEvent, Data, NeedAuthkey, NewSession, \
-    MessagesAck
+    MessagesAck, UpdateMessageId
 from mtproto.session.msg_id import MsgId
 from mtproto.session.seq_no import SeqNo
 from mtproto.transport import transports, Connection
@@ -27,7 +27,7 @@ _STRICTLRY_NOT_CONTENT_RELATED = {
     Int.write(0x73f1f8dc, False),  # MsgContainer
     Int.write(0x3072cfa1, False),  # GzipPacked
 }
-_STRICTLRY_CONTENT_RELATED = Int.write(0xf35c6d01, False)  # RpcResult
+_RPC_RESULT_CONSTRUCTOR = Int.write(0xf35c6d01, False)  # RpcResult
 _MANUALLY_PARSED_CONSTRUCTORS = {
     MsgContainer.__tl_id_bytes__: MsgContainer,
     NewSessionCreated.__tl_id_bytes__: NewSessionCreated,
@@ -53,10 +53,11 @@ class Session:
         self._seq_no = SeqNo()
         self._msg_id = MsgId(role)
         self._session_id: int = Long.read_bytes(urandom(8)) if role is ConnectionRole.CLIENT else 0
-        self._need_ack = []
-        self._queue = []
+        self._need_ack: list[int] = []
+        self._queue: list[Message] = []
         self._pending_packet: EncryptedMessagePacket | None = None
         self._received: deque[BaseEvent] = deque()
+        self._pending: dict[int, bytes] = {}
 
         if auth_key is not None:
             self.set_auth_key(auth_key)
@@ -77,12 +78,16 @@ class Session:
             raise ValueError("Invalid salt: needs to be exactly 8 bytes")
         self._salt = salt
 
-    def queue(self, data: bytes, content_related: bool = False, response: bool = False) -> None:
-        self._queue.append(Message(
+    def queue(self, data: bytes, content_related: bool = False, response: bool = False) -> int:
+        message = Message(
             message_id=self._msg_id.make(response),
             seq_no=self._seq_no.make(content_related),
             body=data,
-        ))
+        )
+
+        self._queue.append(message)
+        self._pending[message.message_id] = data
+        return message.message_id
 
     def ack_msg_id(self, msg_id: int) -> None:
         if self._need_ack:
@@ -96,13 +101,20 @@ class Session:
     def send(
             self, data: bytes | None, content_related: bool = False, response: bool = False,
     ) -> bytes:
+        if self._auth_key is None:
+            raise ValueError("Auth key needs to be set before calling .send()")
+
         if self._need_ack:
             to_ack = self._need_ack[:4096]
             self._need_ack = self._need_ack[4096:]
             self.queue(MsgsAck(to_ack).write(), False, False)
 
+        if not data and not self._queue:
+            return b""
+
         if self._queue:
-            self.queue(data, content_related, response)
+            if data:
+                self.queue(data, content_related, response)
             data = MsgContainer(self._queue).write()
             self._queue.clear()
             response = False
@@ -124,9 +136,25 @@ class Session:
             message_data=data,
         ))
 
-    def _process_received(self, data: bytes) -> BaseEvent | None:
-        if data[:4] not in _MANUALLY_PARSED_CONSTRUCTORS:
-            return Data(data)
+    def send_session_created(self, first_message_id: int) -> None:
+        self.queue(NewSessionCreated(
+            first_msg_id=first_message_id,
+            unique_id=self._session_id,
+            server_salt=Long.read_bytes(self._salt),
+        ).serialize())
+
+    def _requeue(self, old_msg_id: int, old_seq_no: int) -> None:
+        data = self._pending.pop(old_msg_id)
+        new_msg_id = self.queue(data, old_seq_no & 1 == 1, False)
+        self._received.append(UpdateMessageId(old_msg_id, new_msg_id))
+
+    def _process_received(self, data: bytes, session_id: int, message_id: int) -> BaseEvent | None:
+        constructor = data[:4]
+        if constructor == _RPC_RESULT_CONSTRUCTOR:
+            req_msg_id = Long.read_bytes(data[4:4 + 8])
+            self._pending.pop(req_msg_id, None)
+        if constructor not in _MANUALLY_PARSED_CONSTRUCTORS:
+            return Data(message_id, session_id, data)
 
         stream = BytesIO(data)
         obj = _MANUALLY_PARSED_CONSTRUCTORS[stream.read(4)].deserialize(stream)
@@ -135,16 +163,22 @@ class Session:
             for message in obj.messages:
                 if self._role is ConnectionRole.CLIENT and message.seq_no & 1:
                     self.ack_msg_id(message.message_id)
-                if (processed := self._process_received(message.body)) is not None:
+                if (processed := self._process_received(message.body, session_id, message.message_id)) is not None:
                     self._received.append(processed)
             return None
         elif isinstance(obj, NewSessionCreated):
-            self._received.append(NewSession(self._session_id, None))
-        elif isinstance(obj, BadServerSalt):
-            return ...  # TODO: resend message with new salt
+            self._received.append(NewSession(self._session_id, None, None))
+        elif isinstance(obj, BadServerSalt) and self._role is ConnectionRole.CLIENT:
+            self.set_salt(obj.new_server_salt)
+            if obj.bad_msg_id in self._pending:
+                self._requeue(obj.bad_msg_id, obj.bad_msg_seqno)
         elif isinstance(obj, BadMsgNotification):
-            return ...  # TODO: resend message with new container
+            if obj.error_code in (16, 17):
+                self._requeue(obj.bad_msg_id, obj.bad_msg_seqno)
+            # TODO: requeue 34/35?
         elif isinstance(obj, MsgsAck):
+            for msg_id in obj.msg_ids:
+                self._pending.pop(msg_id, None)
             self._received.append(MessagesAck(obj.msg_ids))
         else:
             raise RuntimeError("Unreachable")
@@ -153,7 +187,7 @@ class Session:
             return self._received.popleft()
 
     def _send_bad_msg_notification(self, msg_id: int, msg_seqno: int, error: int) -> None:
-        self.send(
+        self.queue(
             BadMsgNotification(bad_msg_id=msg_id, bad_msg_seqno=msg_seqno, error_code=error).serialize(),
             response=True,
         )
@@ -183,7 +217,7 @@ class Session:
             # TODO: ignore BindTempAuthKey
             if packet.salt != self._salt:
                 if self._role is ConnectionRole.SERVER:
-                    self.send(
+                    self.queue(
                         BadServerSalt(
                             bad_msg_id=packet.message_id,
                             bad_msg_seqno=packet.seq_no,
@@ -199,13 +233,8 @@ class Session:
 
             if packet.session_id != self._session_id:
                 if self._role is ConnectionRole.SERVER:
-                    self._received.append(NewSession(packet.session_id, self._session_id or None))
+                    self._received.append(NewSession(packet.session_id, self._session_id or None, packet.message_id))
                     self._session_id = packet.session_id
-                    self.send(NewSessionCreated(
-                        first_msg_id=packet.message_id,
-                        unique_id=packet.session_id,
-                        server_salt=Long.read_bytes(self._salt),
-                    ).serialize())
                 else:
                     return None
 
@@ -223,7 +252,7 @@ class Session:
                 elif (packet.seq_no & 1) == 1 and packet.data[:4] in _STRICTLRY_NOT_CONTENT_RELATED:
                     # 34: an even msg_seqno expected (irrelevant message), but odd received
                     return self._send_bad_msg_notification(packet.message_id, packet.seq_no, 34)
-                elif (packet.seq_no & 1) == 0 and packet.data[:4] == _STRICTLRY_CONTENT_RELATED:
+                elif (packet.seq_no & 1) == 0 and packet.data[:4] == _RPC_RESULT_CONSTRUCTOR:
                     # 35: odd msg_seqno expected (relevant message), but even received
                     return self._send_bad_msg_notification(packet.message_id, packet.seq_no, 35)
 
@@ -239,6 +268,6 @@ class Session:
                     # msg_id too high
                     return None
 
-            return self._process_received(packet.data)
+            return self._process_received(packet.data, packet.session_id, packet.message_id)
 
         raise ValueError(f"Unknown packet: {packet!r}")
