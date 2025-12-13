@@ -19,7 +19,7 @@ class MsgId:
         else:
             self._offset += 1
 
-        msg_id = now * 2 ** 32 + self._offset
+        msg_id = now * 2 ** 32 + self._offset * 4
 
         if self._role is ConnectionRole.SERVER:
             msg_id += 1 if in_reply else 3

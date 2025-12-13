@@ -119,6 +119,8 @@ class Session:
         return False
 
     def get_salt(self) -> bytes:
+        if len(self._salts) == 1:
+            return self._salts[0][0]
         idx = bisect.bisect_left(self._salts, time(), key=lambda s: s[1])
         return self._salts[idx][0]
 
@@ -292,21 +294,17 @@ class Session:
             packet = packet.decrypt(self._auth_key, ConnectionRole.opposite(self._role))
 
             # TODO: ignore BindTempAuthKey
-            if not self.check_salt(packet.salt):
-                if self._role is ConnectionRole.SERVER:
-                    self.queue(
-                        BadServerSalt(
-                            bad_msg_id=packet.message_id,
-                            bad_msg_seqno=packet.seq_no,
-                            error_code=48,
-                            new_server_salt=Long.read_bytes(self.get_salt()),
-                        ).serialize(),
-                        response=True,
-                    )
-                    return None
-                else:
-                    # idk, just ignore message?
-                    return None
+            if self._role is ConnectionRole.SERVER and not self.check_salt(packet.salt):
+                self.queue(
+                    BadServerSalt(
+                        bad_msg_id=packet.message_id,
+                        bad_msg_seqno=packet.seq_no,
+                        error_code=48,
+                        new_server_salt=Long.read_bytes(self.get_salt()),
+                    ).serialize(),
+                    response=True,
+                )
+                return None
 
             if packet.session_id != self._session_id:
                 if self._role is ConnectionRole.SERVER:
