@@ -45,7 +45,10 @@ class HttpTransportParamCorsHeaders(HttpTransportParam):
 class HttpTransport(BaseTransport):
     SUPPORTS_OBFUSCATION = False
 
-    __slots__ = ("_conn", "_need_cors_headers", "_length", "_peeked_packet", "_host", "_keep_alive", "_cors_headers",)
+    __slots__ = (
+        "_conn", "_need_cors_headers", "_length", "_peeked_packet", "_host", "_keep_alive", "_cors_headers",
+        "_skip_data",
+    )
 
     def __init__(self, *args, **kwargs) -> None:
         if h11 is None:
@@ -57,6 +60,7 @@ class HttpTransport(BaseTransport):
         self._need_cors_headers = False
         self._length: int | None = None
         self._peeked_packet: BasePacket | None = None
+        self._skip_data = False
 
         self._host = "127.0.0.1"
         self._keep_alive = True
@@ -76,6 +80,8 @@ class HttpTransport(BaseTransport):
             event = self._conn.next_event()
             if isinstance(event, h11.Data):
                 self._length = None
+                if self._skip_data:
+                    return None
                 return MessagePacket.parse(event.data)
             elif isinstance(event, h11.Request):
                 self._need_cors_headers = b"w" in event.target.rpartition(b"/")[-1]
@@ -92,6 +98,9 @@ class HttpTransport(BaseTransport):
                     raise RuntimeError(f"No \"Content-Length\" in request\"")
                 continue
             elif isinstance(event, h11.Response):
+                if event.status_code >= 400:
+                    self._skip_data = True
+                    return ErrorPacket(event.status_code)
                 continue
             break
 

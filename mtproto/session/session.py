@@ -1,15 +1,19 @@
 import bisect
 import hashlib
+from collections import deque
 from io import BytesIO
 from os import urandom
 from time import time
 
 from mtproto import ConnectionRole
-from mtproto.session.containers.message import Message
-from mtproto.session.containers.msg_container import MsgContainer, MSG_CONTAINER_ID_BYTES
-from mtproto.session.containers.msgs_ack import MsgsAck
-from mtproto.session.messages import ErrorMessage, UnencryptedMessage, BaseMessage, DataMessage, NeedAuthkey, \
-    DataMessages
+from mtproto.session.service_messages.bad_msg_notification import BadMsgNotification
+from mtproto.session.service_messages.bad_server_salt import BadServerSalt
+from mtproto.session.service_messages.message import Message
+from mtproto.session.service_messages.msg_container import MsgContainer
+from mtproto.session.service_messages.msgs_ack import MsgsAck
+from mtproto.session.service_messages.new_session_created import NewSessionCreated
+from mtproto.session.messages import TransportError, UnencryptedData, BaseEvent, Data, NeedAuthkey, NewSession, \
+    MessagesAck
 from mtproto.session.msg_id import MsgId
 from mtproto.session.seq_no import SeqNo
 from mtproto.transport import transports, Connection
@@ -24,7 +28,13 @@ _STRICTLRY_NOT_CONTENT_RELATED = {
     Int.write(0x3072cfa1, False),  # GzipPacked
 }
 _STRICTLRY_CONTENT_RELATED = Int.write(0xf35c6d01, False)  # RpcResult
-
+_MANUALLY_PARSED_CONSTRUCTORS = {
+    MsgContainer.__tl_id_bytes__: MsgContainer,
+    NewSessionCreated.__tl_id_bytes__: NewSessionCreated,
+    BadServerSalt.__tl_id_bytes__: BadServerSalt,
+    BadMsgNotification.__tl_id_bytes__: BadMsgNotification,
+    MsgsAck.__tl_id_bytes__: MsgsAck,
+}
 
 class Session:
     def __init__(
@@ -46,6 +56,7 @@ class Session:
         self._need_ack = []
         self._queue = []
         self._pending_packet: EncryptedMessagePacket | None = None
+        self._received: deque[BaseEvent] = deque()
 
         if auth_key is not None:
             self.set_auth_key(auth_key)
@@ -113,17 +124,55 @@ class Session:
             message_data=data,
         ))
 
-    def receive(self, data: bytes = b"") -> BaseMessage | None:
+    def _process_received(self, data: bytes) -> BaseEvent | None:
+        if data[:4] not in _MANUALLY_PARSED_CONSTRUCTORS:
+            return Data(data)
+
+        stream = BytesIO(data)
+        obj = _MANUALLY_PARSED_CONSTRUCTORS[stream.read(4)].deserialize(stream)
+
+        if isinstance(obj, MsgContainer):
+            for message in obj.messages:
+                if self._role is ConnectionRole.CLIENT and message.seq_no & 1:
+                    self.ack_msg_id(message.message_id)
+                if (processed := self._process_received(message.body)) is not None:
+                    self._received.append(processed)
+            return None
+        elif isinstance(obj, NewSessionCreated):
+            self._received.append(NewSession(self._session_id, None))
+        elif isinstance(obj, BadServerSalt):
+            return ...  # TODO: resend message with new salt
+        elif isinstance(obj, BadMsgNotification):
+            return ...  # TODO: resend message with new container
+        elif isinstance(obj, MsgsAck):
+            self._received.append(MessagesAck(obj.msg_ids))
+        else:
+            raise RuntimeError("Unreachable")
+
+        if self._received:
+            return self._received.popleft()
+
+    def _send_bad_msg_notification(self, msg_id: int, msg_seqno: int, error: int) -> None:
+        self.send(
+            BadMsgNotification(bad_msg_id=msg_id, bad_msg_seqno=msg_seqno, error_code=error).serialize(),
+            response=True,
+        )
+
+    def receive(self, data: bytes = b"") -> BaseEvent | None:
         self._conn.data_received(data)
+
+        if self._received:
+            return self._received.popleft()
+
         packet = self._pending_packet or self._conn.receive()
         if packet is None:
             return None
 
         if isinstance(packet, ErrorPacket):
-            return ErrorMessage(code=packet.error_code)
+            return TransportError(code=packet.error_code)
         elif isinstance(packet, UnencryptedMessagePacket):
             # TODO: does telegram care about message id in not encrypted messages?
-            return UnencryptedMessage(data=packet.message_data)
+            return UnencryptedData(data=packet.message_data)
         elif isinstance(packet, EncryptedMessagePacket):
             if packet.auth_key_id != self._auth_key_id:
                 self._pending_packet = packet
@@ -134,15 +183,29 @@ class Session:
             # TODO: ignore BindTempAuthKey
             if packet.salt != self._salt:
                 if self._role is ConnectionRole.SERVER:
-                    ...  # TODO: send BadServerSalt
+                    self.send(
+                        BadServerSalt(
+                            bad_msg_id=packet.message_id,
+                            bad_msg_seqno=packet.seq_no,
+                            error_code=48,
+                            new_server_salt=Long.read_bytes(self._salt),
+                        ).serialize(),
+                        response=True,
+                    )
+                    return None
                 else:
                     # idk, just ignore message?
                     return None
 
             if packet.session_id != self._session_id:
                 if self._role is ConnectionRole.SERVER:
+                    self._received.append(NewSession(packet.session_id, self._session_id or None))
                     self._session_id = packet.session_id
-                    ...  # TODO: send NewSessionCreated
+                    self.send(NewSessionCreated(
+                        first_msg_id=packet.message_id,
+                        unique_id=packet.session_id,
+                        server_salt=Long.read_bytes(self._salt),
+                    ).serialize())
                 else:
                     return None
 
@@ -150,24 +213,19 @@ class Session:
                 if packet.message_id % 4 != 0:
                     # 18: incorrect two lower order msg_id bits
                     #  (the server expects client message msg_id to be divisible by 4)
-                    ...  # TODO: BadMsgNotification
-                    return None
+                    return self._send_bad_msg_notification(packet.message_id, packet.seq_no, 18)
                 elif (packet.message_id >> 32) < (time() - 300):
                     # 16: msg_id too low
-                    ...  # TODO: BadMsgNotification
-                    return None
+                    return self._send_bad_msg_notification(packet.message_id, packet.seq_no, 16)
                 elif (packet.message_id >> 32) > (time() + 30):
                     # 17: msg_id too high
-                    ...  # TODO: BadMsgNotification
-                    return None
+                    return self._send_bad_msg_notification(packet.message_id, packet.seq_no, 17)
                 elif (packet.seq_no & 1) == 1 and packet.data[:4] in _STRICTLRY_NOT_CONTENT_RELATED:
                     # 34: an even msg_seqno expected (irrelevant message), but odd received
-                    ...  # TODO: BadMsgNotification
-                    return None
+                    return self._send_bad_msg_notification(packet.message_id, packet.seq_no, 34)
                 elif (packet.seq_no & 1) == 0 and packet.data[:4] == _STRICTLRY_CONTENT_RELATED:
                     # 35: odd msg_seqno expected (relevant message), but even received
-                    ...  # TODO: BadMsgNotification
-                    return None
+                    return self._send_bad_msg_notification(packet.message_id, packet.seq_no, 35)
 
             elif self._role is ConnectionRole.CLIENT:
                 if packet.message_id % 4 not in (1, 3):
@@ -181,17 +239,6 @@ class Session:
                     # msg_id too high
                     return None
 
-            if not packet.data.startswith(MSG_CONTAINER_ID_BYTES):
-                return DataMessage(packet.data)
-
-            container = MsgContainer.read(BytesIO(packet.data))
-            result = DataMessages([])
-
-            for message in container.messages:
-                if self._role is ConnectionRole.CLIENT and message.seq_no & 1:
-                    self.ack_msg_id(message.message_id)
-                result.messages.append(DataMessage(message.body))
-
-            return result
+            return self._process_received(packet.data)
 
         raise ValueError(f"Unknown packet: {packet!r}")
