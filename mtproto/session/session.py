@@ -142,6 +142,11 @@ class Session:
         else:
             self._need_ack.append(msg_id)
 
+    def send_protocol_id(self) -> bytes:
+        if self._role is ConnectionRole.SERVER:
+            return b""
+        return self._conn.send(None)
+
     def send(
             self, data: bytes | None, content_related: bool = False, response: bool = False,
     ) -> bytes:

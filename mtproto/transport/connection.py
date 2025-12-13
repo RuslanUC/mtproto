@@ -49,7 +49,7 @@ class Connection:
 
         return self._transport.read()
 
-    def send(self, packet: BasePacket) -> bytes:
+    def send(self, packet: BasePacket | None) -> bytes:
         initial_data = b""
 
         was_none = self._transport is None
@@ -66,7 +66,8 @@ class Connection:
                 self._transport.set_param(param)
             self._transport_params = None
 
-        self._transport.write(packet)
+        if packet is not None:
+            self._transport.write(packet)
         return initial_data + self._tx_buffer.get_data()
 
     def has_packet(self) -> bool:
