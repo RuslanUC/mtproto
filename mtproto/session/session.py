@@ -271,11 +271,19 @@ class Session:
         self._future_salts_req = self.queue(GetFutureSalts(24).write(), True)
         self._salts_fetched_at = time()
 
+    def _process_ack(self, message_id: int) -> None:
+        self._pending.pop(message_id, None)
+        container = self._pending_containers.pop(message_id, None)
+        if container is None:
+            return
+        for msg_id, _ in container:
+            self._pending_containers.pop(msg_id, None)
+
     def _process_received(self, data: bytes, session_id: int, message_id: int) -> BaseEvent | None:
         constructor = data[:4]
         if constructor == _RPC_RESULT_CONSTRUCTOR:
             req_msg_id = Long.read_bytes(data[4:4 + 8])
-            self._pending.pop(req_msg_id, None)
+            self._process_ack(req_msg_id)
         elif constructor == FutureSalts.__tl_id_bytes__ and Long.read_bytes(data[4:4 + 8]) == self._future_salts_req:
             future_salts = FutureSalts.read(BytesIO(data))
             for salt in future_salts.salts:
@@ -318,7 +326,7 @@ class Session:
             # TODO: requeue 34/35?
         elif isinstance(obj, MsgsAck):
             for msg_id in obj.msg_ids:
-                self._pending.pop(msg_id, None)
+                self._process_ack(msg_id)
             self._received.append(MessagesAck(obj.msg_ids))
         else:
             raise RuntimeError("Unreachable")
