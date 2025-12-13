@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import Self
+from typing import Self, Sequence
 
 from .message import Message
 from ...utils import Int
@@ -11,7 +11,7 @@ class MsgContainer:
 
     __slots__ = ("messages",)
 
-    def __init__(self, messages: list[Message]):
+    def __init__(self, messages: Sequence[Message]):
         self.messages = messages
 
     @classmethod

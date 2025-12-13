@@ -1,5 +1,6 @@
 import bisect
 import hashlib
+import logging
 from collections import deque
 from io import BytesIO
 from os import urandom
@@ -38,6 +39,9 @@ _MANUALLY_PARSED_CONSTRUCTORS = {
     MsgsAck.__tl_id_bytes__: MsgsAck,
 }
 
+log = logging.getLogger(__name__)
+
+
 class Session:
     def __init__(
             self,
@@ -56,10 +60,11 @@ class Session:
         self._msg_id = MsgId(role)
         self._session_id: int = Long.read_bytes(urandom(8)) if role is ConnectionRole.CLIENT else 0
         self._need_ack: list[int] = []
-        self._queue: list[Message] = []
+        self._queue: deque[Message] = deque()
         self._pending_packet: EncryptedMessagePacket | None = None
         self._received: deque[BaseEvent] = deque()
         self._pending: dict[int, bytes] = {}
+        self._pending_containers: dict[int, list[tuple[int, bool]]] = {}
         self._future_salts_req: int | None = None
         self._salts_fetched_at: int = 0
 
@@ -91,11 +96,15 @@ class Session:
         self._salts.sort(key=lambda s: s[1])
 
     def add_salt(self, salt: int | bytes, valid_from: int) -> None:
+        if isinstance(salt, int):
+            salt = Long.write(salt)
+
         if not self._salts:
             self._salts.append((salt, valid_from))
             return
+
         add_idx = bisect.bisect_left(self._salts, valid_from, key=lambda s: s[1])
-        if self._salts[add_idx][1] == valid_from:
+        if add_idx < len(self._salts) and self._salts[add_idx][1] == valid_from:
             self._salts[add_idx] = salt, valid_from
         else:
             self._salts.insert(add_idx, (salt, valid_from))
@@ -120,25 +129,35 @@ class Session:
 
     def get_salt(self) -> bytes:
         if len(self._salts) == 1:
+            log.debug(f"Using only salt {self._salts[0][0]!r} (valid since {self._salts[0][1]})")
             return self._salts[0][0]
         idx = bisect.bisect_left(self._salts, time(), key=lambda s: s[1])
+        if idx > 0:
+            idx -= 1
+        log.debug(f"Using salt {self._salts[idx][0]!r} (valid since {self._salts[idx][1]})")
         return self._salts[idx][0]
 
-    def queue(self, data: bytes, content_related: bool = False, response: bool = False) -> int:
+    def queue(
+            self, data: bytes, content_related: bool = False, response: bool = False,
+            *, _left: bool = False, _msg_id: int | None = None,
+    ) -> int:
         message = Message(
-            message_id=self._msg_id.make(response),
+            message_id=_msg_id if _msg_id is not None else self._msg_id.make(response),
             seq_no=self._seq_no.make(content_related),
             body=data,
         )
 
-        self._queue.append(message)
+        if _left:
+            self._queue.appendleft(message)
+        else:
+            self._queue.append(message)
         self._pending[message.message_id] = data
         return message.message_id
 
     def ack_msg_id(self, msg_id: int) -> None:
         if self._need_ack:
             idx = bisect.bisect_left(self._need_ack, msg_id)
-            if self._need_ack[idx] == msg_id:
+            if idx < len(self._need_ack) and self._need_ack[idx] == msg_id:
                 return
             self._need_ack.insert(idx, msg_id)
         else:
@@ -160,24 +179,40 @@ class Session:
             self._need_ack = self._need_ack[4096:]
             self.queue(MsgsAck(to_ack).write(), False, False)
 
-        self._fetch_future_salts_maybe(True)
-
-        if not data and not self._queue:
-            return b""
+        self._fetch_future_salts_maybe()
 
         if self._queue:
             if data:
                 self.queue(data, content_related, response)
-            data = MsgContainer(self._queue).write()
+
+            message_id = self._msg_id.make(False)
+            log.debug(f"Container with {len(self._queue)} messages will be sent as {message_id}")
+
+            container = MsgContainer(self._queue)
+            ids = [
+                (message.message_id, message.seq_no & 1 == 1)
+                for message in container.messages
+            ]
+
+            self._pending_containers[message_id] = ids
+            for message in container.messages:
+                self._pending_containers[message.message_id] = ids
+
+            data = container.write()
             self._queue.clear()
-            response = False
             content_related = False
+        elif data:
+            message_id = self._msg_id.make(response)
+            log.debug(f"Message will be sent as {message_id}")
+            self._pending[message_id] = data
+        else:
+            return b""
 
         return self._conn.send(
             DecryptedMessagePacket(
                 salt=self.get_salt(),
                 session_id=self._session_id,
-                message_id=self._msg_id.make(response),
+                message_id=message_id,
                 seq_no=self._seq_no.make(content_related),
                 data=data,
             ).encrypt(self._auth_key, self._role)
@@ -196,10 +231,29 @@ class Session:
             server_salt=Long.read_bytes(self.get_salt()),
         ).serialize())
 
-    def _requeue(self, old_msg_id: int, old_seq_no: int) -> None:
-        data = self._pending.pop(old_msg_id)
-        new_msg_id = self.queue(data, old_seq_no & 1 == 1, False)
-        self._received.append(UpdateMessageId(old_msg_id, new_msg_id))
+    def _requeue(self, old_msg_id: int, old_seq_no: int, left: bool = False, preserve_msg_id: bool = False) -> None:
+        data = self._pending.pop(old_msg_id, None)
+        if data is None:
+            return
+        new_msg_id = self.queue(
+            data=data,
+            content_related=old_seq_no & 1 == 1,
+            response=False,
+            _left=left,
+            _msg_id=old_msg_id if preserve_msg_id else None,
+        )
+        if not preserve_msg_id:
+            self._received.append(UpdateMessageId(old_msg_id, new_msg_id))
+        if old_msg_id == self._future_salts_req and not preserve_msg_id:
+            self._future_salts_req = new_msg_id
+        log.debug(f"Requeue-d message {old_msg_id} as {new_msg_id}")
+
+    def _requeue_container(self, old_msg_id: int) -> None:
+        message_ids = self._pending_containers.pop(old_msg_id)
+        for message_id, content_related in reversed(message_ids):
+            self._pending_containers.pop(message_id, None)
+            self._requeue(message_id, content_related, True)
+        log.debug(f"Requeue-d all messages in container {old_msg_id}")
 
     def _fetch_future_salts_maybe(self, force: bool = False) -> None:
         if self._role is ConnectionRole.SERVER:
@@ -208,6 +262,8 @@ class Session:
             return
         elif not force and (time() - self._salts_fetched_at) < 5 * 60:
             return
+
+        log.debug("Requesting future salts")
 
         if self._future_salts_req is not None:
             self._pending.pop(self._future_salts_req, None)
@@ -241,17 +297,22 @@ class Session:
                     self.ack_msg_id(message.message_id)
                 if (processed := self._process_received(message.body, session_id, message.message_id)) is not None:
                     self._received.append(processed)
-            return None
         elif isinstance(obj, NewSessionCreated):
             self._received.append(NewSession(self._session_id, None, None))
         elif isinstance(obj, BadServerSalt) and self._role is ConnectionRole.CLIENT:
+            log.debug(f"Got BadServerSalt for message {obj.bad_msg_id}")
             self.set_salts([
                 (obj.new_server_salt, int(time() - 30 * 60)),
             ])
             if obj.bad_msg_id in self._pending:
                 self._requeue(obj.bad_msg_id, obj.bad_msg_seqno)
+            elif obj.bad_msg_id in self._pending_containers:
+                self._requeue_container(obj.bad_msg_id)
+            else:
+                log.warning(f"Got BadServerSalt for unknown message {obj.bad_msg_id}")
             self._fetch_future_salts_maybe(True)
-        elif isinstance(obj, BadMsgNotification):
+        elif isinstance(obj, BadMsgNotification) and self._role is ConnectionRole.CLIENT:
+            log.debug(f"Got BadMsgNotification for message {obj.bad_msg_id}")
             if obj.error_code in (16, 17):
                 self._requeue(obj.bad_msg_id, obj.bad_msg_seqno)
             # TODO: requeue 34/35?
