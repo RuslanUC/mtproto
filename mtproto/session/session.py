@@ -31,7 +31,7 @@ _STRICTLRY_NOT_CONTENT_RELATED = {
     MsgContainer.__tl_id_bytes__,
     Int.write(0x3072cfa1, False),  # GzipPacked
 }
-_RPC_RESULT_CONSTRUCTOR = Int.write(0xf35c6d01, False)  # RpcResult
+_RPC_RESULT_CONSTRUCTOR = Int.write(0xf35c6d01, False)
 _MANUALLY_PARSED_CONSTRUCTORS = {
     MsgContainer.__tl_id_bytes__: MsgContainer,
     NewSessionCreated.__tl_id_bytes__: NewSessionCreated,
@@ -39,9 +39,14 @@ _MANUALLY_PARSED_CONSTRUCTORS = {
     BadMsgNotification.__tl_id_bytes__: BadMsgNotification,
     MsgsAck.__tl_id_bytes__: MsgsAck,
 }
+# I have no idea what actual packet size limit is, but it is around 1 megabyte
 _PACKET_SIZE_LIMIT = 1000 * 1000
 _EMPTY_CONTAINER_SIZE = len(MsgContainer([]).write())
 _EMPTY_MESSAGE_SIZE = len(Message(0, 0, b"").write())
+# Two times smaller than value in docs
+_CONTAINER_SIZE_LIMIT = 512
+# Two times smaller than value in docs
+_ACK_SIZE_LIMIT = 4096
 
 log = logging.getLogger(__name__)
 
@@ -184,7 +189,7 @@ class Session:
         self._pending_containers[message_id] = ids
 
         total_size = _EMPTY_CONTAINER_SIZE
-        while total_size < _PACKET_SIZE_LIMIT and self._queue:
+        while total_size < _PACKET_SIZE_LIMIT and self._queue and len(container.messages) < _CONTAINER_SIZE_LIMIT:
             message_size = len(self._queue[0].body) + _EMPTY_MESSAGE_SIZE
             if total_size + message_size > _PACKET_SIZE_LIMIT and container.messages:
                 break
@@ -211,8 +216,8 @@ class Session:
             return b""
 
         if self._need_ack:
-            to_ack = self._need_ack[:4096]
-            self._need_ack = self._need_ack[4096:]
+            to_ack = self._need_ack[:_ACK_SIZE_LIMIT]
+            self._need_ack = self._need_ack[_ACK_SIZE_LIMIT:]
             self.queue(MsgsAck(to_ack).write(), False, False)
             log.debug(f"Will ack messages: {to_ack!r}...")
 
