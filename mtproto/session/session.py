@@ -39,6 +39,9 @@ _MANUALLY_PARSED_CONSTRUCTORS = {
     BadMsgNotification.__tl_id_bytes__: BadMsgNotification,
     MsgsAck.__tl_id_bytes__: MsgsAck,
 }
+_PACKET_SIZE_LIMIT = 1000 * 1000
+_EMPTY_CONTAINER_SIZE = len(MsgContainer([]).write())
+_EMPTY_MESSAGE_SIZE = len(Message(0, 0, b"").write())
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +177,27 @@ class Session:
             return b""
         return self._conn.send(None)
 
+    def _make_container(self, message_id: int) -> bytes:
+        container = MsgContainer([])
+        ids = []
+
+        self._pending_containers[message_id] = ids
+
+        total_size = _EMPTY_CONTAINER_SIZE
+        while total_size < _PACKET_SIZE_LIMIT and self._queue:
+            message_size = len(self._queue[0].body) + _EMPTY_MESSAGE_SIZE
+            if total_size + message_size > _PACKET_SIZE_LIMIT and container.messages:
+                break
+            log.debug(f"Add message of size {message_size} to container {message_id}")
+            total_size += message_size
+            message = self._queue.popleft()
+            container.messages.append(message)
+            ids.append((message.message_id, message.seq_no & 1 == 1))
+            self._pending_containers[message.message_id] = ids
+
+        log.debug(f"Container with {len(container.messages)} messages will be sent as {message_id}")
+        return container.write()
+
     def send(
             self, data: bytes | None, content_related: bool = False, response: bool = False,
     ) -> bytes:
@@ -190,6 +214,7 @@ class Session:
             to_ack = self._need_ack[:4096]
             self._need_ack = self._need_ack[4096:]
             self.queue(MsgsAck(to_ack).write(), False, False)
+            log.debug(f"Will ack messages: {to_ack!r}...")
 
         self._fetch_future_salts_maybe()
 
@@ -197,27 +222,15 @@ class Session:
             return b""
 
         if self._role is ConnectionRole.CLIENT and self._is_http:
-            self.queue(HttpWait(max_delay=0, wait_after=0, max_wait=250).write(), False, _add_pending=False)
+            self.queue(HttpWait(max_delay=0, wait_after=0, max_wait=250).write(), _left=True, _add_pending=False)
 
         if self._queue:
             if data:
                 self.queue(data, content_related, response)
 
             message_id = self._msg_id.make(False)
-            log.debug(f"Container with {len(self._queue)} messages will be sent as {message_id}")
+            data = self._make_container(message_id)
 
-            container = MsgContainer(self._queue)
-            ids = [
-                (message.message_id, message.seq_no & 1 == 1)
-                for message in container.messages
-            ]
-
-            self._pending_containers[message_id] = ids
-            for message in container.messages:
-                self._pending_containers[message.message_id] = ids
-
-            data = container.write()
-            self._queue.clear()
             content_related = False
         elif data:
             message_id = self._msg_id.make(response)
@@ -225,6 +238,8 @@ class Session:
             self._pending[message_id] = data
         else:
             return b""
+
+        log.debug(f"Will send {len(data)} bytes")
 
         return self._conn.send(
             DecryptedMessagePacket(
