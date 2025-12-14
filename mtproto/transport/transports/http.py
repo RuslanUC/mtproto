@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 try:
     import h11
 except ImportError:
@@ -15,6 +17,8 @@ _CORS_HEADERS = [
     (b"Access-Control-Allow-Headers", b"origin, content-type"),
     (b"Access-Control-Max-Age", b"1728000"),
 ]
+
+log = logging.getLogger(__name__)
 
 
 class HttpTransportParam(BaseTransportParam):
@@ -70,7 +74,8 @@ class HttpTransport(BaseTransport):
         if self._conn is None:
             self._conn = h11.Connection(our_role=h11.SERVER if self.our_role is ConnectionRole.SERVER else h11.CLIENT)
 
-        self._conn.receive_data(self.rx_buffer.readall())
+        if self.rx_buffer.size():
+            self._conn.receive_data(self.rx_buffer.readall())
 
         if self._peeked_packet is not None:
             to_return, self._peeked_packet = self._peeked_packet, None
@@ -78,10 +83,15 @@ class HttpTransport(BaseTransport):
 
         while True:
             event = self._conn.next_event()
+            log.debug(f"Got h11 event {event if event in (h11.NEED_DATA, h11.PAUSED) else type(event)}")
+            log.debug(f"Our h11 state is {self._conn.our_state}, theirs is {self._conn.their_state}")
             if isinstance(event, h11.Data):
                 next_event = self._conn.next_event()
                 if not isinstance(next_event, h11.EndOfMessage):
                     raise RuntimeError(f"Expected EndOfMessage, got {next_event!r}")
+                if self.our_role is ConnectionRole.CLIENT:
+                    log.debug("New h11 cycle")
+                    self._conn.start_next_cycle()
                 self._length = None
                 if self._skip_data:
                     return None
@@ -135,6 +145,10 @@ class HttpTransport(BaseTransport):
                 self.tx_buffer.write(to_write)
             if to_write := self._conn.send(h11.EndOfMessage()):
                 self.tx_buffer.write(to_write)
+
+            if self.our_role is ConnectionRole.CLIENT:
+                log.debug("New h11 cycle")
+                self._conn.start_next_cycle()
         else:
             headers = [
                 (b"host", self._host),
@@ -191,6 +205,7 @@ class HttpTransport(BaseTransport):
     def ready_write(self) -> bool:
         if self._conn is None:
             return self.our_role is ConnectionRole.CLIENT
+        log.debug(f"Our h11 state as of ready_write call is {self._conn.our_state}, theirs is {self._conn.their_state}")
         if self.our_role is ConnectionRole.CLIENT:
             return self._conn.our_state is h11.IDLE \
                 or (self._conn.our_state is h11.SEND_BODY and self._conn.their_state is h11.SEND_RESPONSE)

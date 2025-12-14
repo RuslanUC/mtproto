@@ -11,6 +11,7 @@ from mtproto.session.service_messages.bad_msg_notification import BadMsgNotifica
 from mtproto.session.service_messages.bad_server_salt import BadServerSalt
 from mtproto.session.service_messages.future_salts import FutureSalts
 from mtproto.session.service_messages.get_future_salts import GetFutureSalts
+from mtproto.session.service_messages.http_wait import HttpWait
 from mtproto.session.service_messages.message import Message
 from mtproto.session.service_messages.msg_container import MsgContainer
 from mtproto.session.service_messages.msgs_ack import MsgsAck
@@ -68,6 +69,7 @@ class Session:
         self._pending_containers: dict[int, list[tuple[int, bool]]] = {}
         self._future_salts_req: int | None = None
         self._salts_fetched_at: int = 0
+        self._is_http = issubclass(transport, transports.HttpTransport)
 
         if auth_key is not None:
             self.set_auth_key(auth_key)
@@ -140,7 +142,7 @@ class Session:
 
     def queue(
             self, data: bytes, content_related: bool = False, response: bool = False,
-            *, _left: bool = False, _msg_id: int | None = None,
+            *, _left: bool = False, _msg_id: int | None = None, _add_pending: bool = True,
     ) -> int:
         message = Message(
             message_id=_msg_id if _msg_id is not None else self._msg_id.make(response),
@@ -152,7 +154,10 @@ class Session:
             self._queue.appendleft(message)
         else:
             self._queue.append(message)
-        self._pending[message.message_id] = data
+
+        if _add_pending:
+            self._pending[message.message_id] = data
+
         return message.message_id
 
     def ack_msg_id(self, msg_id: int) -> None:
@@ -176,6 +181,7 @@ class Session:
             raise ValueError("Auth key needs to be set before calling .send()")
 
         if not self._conn.transport_send_ready():
+            log.info("Transport is not ready to send data, queueing...")
             if data:
                 self.queue(data, content_related, response)
             return b""
@@ -186,6 +192,12 @@ class Session:
             self.queue(MsgsAck(to_ack).write(), False, False)
 
         self._fetch_future_salts_maybe()
+
+        if not self._queue and not data:
+            return b""
+
+        if self._role is ConnectionRole.CLIENT and self._is_http:
+            self.queue(HttpWait(max_delay=0, wait_after=0, max_wait=250).write(), False, _add_pending=False)
 
         if self._queue:
             if data:
