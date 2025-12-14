@@ -79,3 +79,9 @@ class FullTransport(BaseTransport):
             return None
 
         return int.from_bytes(self.rx_buffer.peekexactly(4), "little")
+
+    def ready_read(self) -> bool:
+        return True
+
+    def ready_write(self) -> bool:
+        return True

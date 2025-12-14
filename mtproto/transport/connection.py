@@ -98,3 +98,13 @@ class Connection:
         if self._transport_params is None:
             self._transport_params = []
         self._transport_params.append(param)
+
+    def transport_recv_ready(self) -> bool:
+        if self._transport is None:
+            return self._role is ConnectionRole.SERVER
+        return self._transport.ready_read()
+
+    def transport_send_ready(self) -> bool:
+        if self._transport is None:
+            return self._role is ConnectionRole.CLIENT
+        return self._transport.ready_write()

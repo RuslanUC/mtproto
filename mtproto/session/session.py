@@ -61,6 +61,7 @@ class Session:
         self._session_id: int = Long.read_bytes(urandom(8)) if role is ConnectionRole.CLIENT else 0
         self._need_ack: list[int] = []
         self._queue: deque[Message] = deque()
+        self._queue_plain: deque[bytes] = deque()
         self._pending_packet: EncryptedMessagePacket | None = None
         self._received: deque[BaseEvent] = deque()
         self._pending: dict[int, bytes] = {}
@@ -174,6 +175,11 @@ class Session:
         if self._auth_key is None:
             raise ValueError("Auth key needs to be set before calling .send()")
 
+        if not self._conn.transport_send_ready():
+            if data:
+                self.queue(data, content_related, response)
+            return b""
+
         if self._need_ack:
             to_ack = self._need_ack[:4096]
             self._need_ack = self._need_ack[4096:]
@@ -218,11 +224,29 @@ class Session:
             ).encrypt(self._auth_key, self._role)
         )
 
-    def send_plain(self, data: bytes) -> bytes:
-        return self._conn.send(UnencryptedMessagePacket(
-            message_id=self._msg_id.make(True),
-            message_data=data,
-        ))
+    def send_plain(self, data: bytes, queue: bool = False) -> bytes:
+        if not self._conn.transport_send_ready() and queue:
+            if data:
+                self._queue_plain.append(data)
+            return b""
+
+        to_send = b""
+
+        for queued in self._queue_plain:
+            to_send += self._conn.send(UnencryptedMessagePacket(
+                message_id=self._msg_id.make(True),
+                message_data=queued,
+            ))
+
+        self._queue_plain.clear()
+
+        if data:
+            to_send += self._conn.send(UnencryptedMessagePacket(
+                message_id=self._msg_id.make(True),
+                message_data=data,
+            ))
+
+        return to_send
 
     def send_session_created(self, first_message_id: int) -> None:
         self.queue(NewSessionCreated(

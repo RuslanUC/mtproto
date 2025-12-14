@@ -79,6 +79,9 @@ class HttpTransport(BaseTransport):
         while True:
             event = self._conn.next_event()
             if isinstance(event, h11.Data):
+                next_event = self._conn.next_event()
+                if not isinstance(next_event, h11.EndOfMessage):
+                    raise RuntimeError(f"Expected EndOfMessage, got {next_event!r}")
                 self._length = None
                 if self._skip_data:
                     return None
@@ -175,3 +178,21 @@ class HttpTransport(BaseTransport):
             self._keep_alive = param.enable
         elif isinstance(param, HttpTransportParamCorsHeaders):
             self._cors_headers = param.enable
+
+    def ready_read(self) -> bool:
+        if self._conn is None:
+            return self.our_role is ConnectionRole.SERVER
+        if self.our_role is ConnectionRole.SERVER:
+            return self._conn.our_state is h11.IDLE \
+                or (self._conn.our_state is h11.SEND_RESPONSE and self._conn.their_state is h11.SEND_BODY)
+        else:
+            return self._conn.our_state is h11.DONE and self._conn.their_state is h11.SEND_RESPONSE
+
+    def ready_write(self) -> bool:
+        if self._conn is None:
+            return self.our_role is ConnectionRole.CLIENT
+        if self.our_role is ConnectionRole.CLIENT:
+            return self._conn.our_state is h11.IDLE \
+                or (self._conn.our_state is h11.SEND_BODY and self._conn.their_state is h11.SEND_RESPONSE)
+        else:
+            return self._conn.our_state is h11.SEND_RESPONSE and self._conn.their_state is h11.DONE

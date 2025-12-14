@@ -42,3 +42,9 @@ class ObfuscatedTransport(BaseTransport):
 
     def peek_length(self) -> int | None:
         return self._transport.peek_length()
+
+    def ready_read(self) -> bool:
+        return True
+
+    def ready_write(self) -> bool:
+        return True

@@ -60,3 +60,9 @@ class PaddedIntermediateTransport(IntermediateTransport):
             return None
 
         return int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF
+
+    def ready_read(self) -> bool:
+        return True
+
+    def ready_write(self) -> bool:
+        return True

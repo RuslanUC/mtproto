@@ -88,3 +88,9 @@ class AbridgedTransport(BaseTransport):
             return None
         return length[0]
 
+    def ready_read(self) -> bool:
+        return True
+
+    def ready_write(self) -> bool:
+        return True
+
