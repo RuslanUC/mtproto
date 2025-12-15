@@ -118,8 +118,6 @@ class HttpTransport(BaseTransport):
             break
 
     def write(self, packet: BasePacket) -> None:
-        if isinstance(packet, QuickAckPacket):
-            raise ValueError("\"Http\" transport does not support quick-acks.")
         if self._conn is None:
             self._conn = h11.Connection(our_role=h11.SERVER if self.our_role is ConnectionRole.SERVER else h11.CLIENT)
 
