@@ -29,9 +29,10 @@ def test_no_transport():
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT)
 
-    assert srv.receive(b"") is None
+    srv.data_received(b"")
+    assert srv.next_event() is None
     with pt.raises(ValueError):
-        cli.receive(b"")
+        cli.next_event()
 
 
 @default_parametrize
@@ -42,7 +43,8 @@ def test_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bo
     message_id = int.from_bytes(urandom(2), "little")
     small_payload = urandom(16)
     to_send = cli.send(UnencryptedMessagePacket(message_id, small_payload))
-    received = srv.receive(to_send)
+    srv.data_received(to_send)
+    received = srv.next_event()
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == message_id
     assert received.message_data == small_payload
@@ -59,12 +61,14 @@ def test_quick_ack(
     cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     # Client MUST send something first
-    assert srv.receive(cli.send(UnencryptedMessagePacket(0, b"1234"))) is not None
+    srv.data_received(cli.send(UnencryptedMessagePacket(0, b"1234")))
+    assert srv.next_event() is not None
 
     if quick_ack:
         token = b"".join([b"\x80", urandom(2), b"\x80"])
         to_send = srv.send(QuickAckPacket(token))
-        received = cli.receive(to_send)
+        cli.data_received(to_send)
+        received = cli.next_event()
         assert isinstance(received, QuickAckPacket)
         assert received.token == token
 
@@ -75,11 +79,13 @@ def test_error(transport_cls: type[BaseTransport], transport_obf: bool):
     cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     # Client MUST send something first
-    assert srv.receive(cli.send(UnencryptedMessagePacket(0, b"1234"))) is not None
+    srv.data_received(cli.send(UnencryptedMessagePacket(0, b"1234")))
+    assert srv.next_event() is not None
 
     error_code = randint(300, 599)
     to_send = srv.send(ErrorPacket(error_code))
-    received = cli.receive(to_send)
+    cli.data_received(to_send)
+    received = cli.next_event()
     assert isinstance(received, ErrorPacket)
     assert received.error_code == error_code
 
@@ -93,7 +99,8 @@ def test_encrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     msg_id = urandom(16)
     data = urandom(32)
     to_send = cli.send(EncryptedMessagePacket(key_id, msg_id, data))
-    received = srv.receive(to_send)
+    srv.data_received(to_send)
+    received = srv.next_event()
     assert isinstance(received, EncryptedMessagePacket)
     assert received.auth_key_id == key_id
     assert received.message_key == msg_id
@@ -106,10 +113,11 @@ def test_receive_empty(transport_cls: type[BaseTransport], transport_obf: bool):
     cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
 
     # Client MUST send something first
-    assert srv.receive(cli.send(UnencryptedMessagePacket(0, b"1234"))) is not None
+    srv.data_received(cli.send(UnencryptedMessagePacket(0, b"1234")))
+    assert srv.next_event() is not None
 
-    assert cli.receive(b"") is None
-    assert srv.receive(b"") is None
+    assert cli.next_event() is None
+    assert srv.next_event() is None
 
 
 @default_parametrize
@@ -120,7 +128,8 @@ def test_big_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool
     message_id = int.from_bytes(urandom(2), "little")
     big_payload = urandom(16 * 1024)
     to_send = cli.send(UnencryptedMessagePacket(message_id, big_payload))
-    received = srv.receive(to_send)
+    srv.data_received(to_send)
+    received = srv.next_event()
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == message_id
     assert received.message_data == big_payload
@@ -134,9 +143,12 @@ def test_separate_length(transport_cls: type[BaseTransport], transport_obf: bool
     message_id = int.from_bytes(urandom(2), "little")
     small_payload = urandom(16)
     to_send = cli.send(UnencryptedMessagePacket(message_id, small_payload))
-    assert srv.receive(to_send[:1]) is None
-    assert srv.receive(to_send[1:4]) is None
-    received = srv.receive(to_send[4:])
+    srv.data_received(to_send[:1])
+    assert srv.next_event() is None
+    srv.data_received(to_send[1:4])
+    assert srv.next_event() is None
+    srv.data_received(to_send[4:])
+    received = srv.next_event()
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == message_id
     assert received.message_data == small_payload
@@ -158,7 +170,8 @@ def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool
     )
 
     to_send = cli.send(to_send_decrypted.encrypt(auth_key, ConnectionRole.CLIENT))
-    received = srv.receive(to_send)
+    srv.data_received(to_send)
+    received = srv.next_event()
     assert isinstance(received, EncryptedMessagePacket)
     received = received.decrypt(auth_key, ConnectionRole.CLIENT)
     assert isinstance(received, DecryptedMessagePacket)
@@ -169,7 +182,8 @@ def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool
     assert received.data == to_send_decrypted.data
 
     to_send = srv.send(to_send_decrypted.encrypt(auth_key, ConnectionRole.SERVER))
-    received = cli.receive(to_send)
+    cli.data_received(to_send)
+    received = cli.next_event()
     assert isinstance(received, EncryptedMessagePacket)
     received = received.decrypt(auth_key, ConnectionRole.SERVER)
     assert isinstance(received, DecryptedMessagePacket)
@@ -194,14 +208,15 @@ def test_has_packet(transport_cls: type[BaseTransport], transport_obf: bool):
         packets.append(packet := UnencryptedMessagePacket(i, urandom(16)))
         to_send += cli.send(packet)
 
-    received = srv.receive(to_send)
+    srv.data_received(to_send)
+    received = srv.next_event()
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == 0
     assert received.message_data == packets[0].message_data
 
     for i in range(1, 16):
         assert srv.has_packet()
-        received = srv.receive()
+        received = srv.next_event()
         assert isinstance(received, UnencryptedMessagePacket)
         assert received.message_id == i
         assert received.message_data == packets[i].message_data
@@ -250,7 +265,8 @@ def test_full_invalid_seq_no() -> None:
     to_send[4:8] = (int.from_bytes(to_send[4:8], "little") + 123).to_bytes(4, "little")
     to_send[-4:] = crc32(to_send[:-4]).to_bytes(4, byteorder="little")
     to_send = bytes(to_send)
-    assert srv.receive(to_send) is None
+    srv.data_received(to_send)
+    assert srv.next_event() is None
 
 
 def test_full_invalid_crc() -> None:
@@ -259,7 +275,8 @@ def test_full_invalid_crc() -> None:
     to_send = cli.send(ErrorPacket(400))
     to_send = bytearray(to_send)
     to_send[-4:] = (int.from_bytes(to_send[-4:], "little") + 1).to_bytes(4, "little")
-    assert srv.receive(to_send) is None
+    srv.data_received(to_send)
+    assert srv.next_event() is None
 
 
 @default_parametrize
@@ -281,10 +298,11 @@ def test_peek_small_unencrypted(transport_cls: type[BaseTransport], transport_ob
     message_id_2 = int.from_bytes(urandom(2), "little")
     small_payload_1 = urandom(16)
     small_payload_2 = urandom(16)
-    received = srv.receive(
+    srv.data_received(
         cli.send(UnencryptedMessagePacket(message_id_1, small_payload_1))
         + cli.send(UnencryptedMessagePacket(message_id_2, small_payload_2))
     )
+    received = srv.next_event()
     assert isinstance(received, UnencryptedMessagePacket)
     assert received.message_id == message_id_1
     assert received.message_data == small_payload_1
@@ -298,7 +316,7 @@ def test_peek_small_unencrypted(transport_cls: type[BaseTransport], transport_ob
 
     assert srv.has_packet()
 
-    received_2 = srv.receive()
+    received_2 = srv.next_event()
     assert isinstance(received_2, UnencryptedMessagePacket)
     assert received_2.message_id == message_id_2
     assert received_2.message_data == small_payload_2

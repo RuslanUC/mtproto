@@ -30,9 +30,7 @@ class Connection:
         if data:
             self._rx_buffer.data_received(data)
 
-    def receive(self, data: bytes = b"") -> BasePacket | None:
-        self.data_received(data)
-
+    def next_event(self) -> BasePacket | None:
         was_none = self._transport is None
         if self._transport is None and self._role is ConnectionRole.SERVER:
             self._transport = BaseTransport.from_buffer(self._rx_buffer)

@@ -56,7 +56,8 @@ def test_socket_telegram(transport_cls: type[BaseTransport], transport_obf: bool
     #print(f"Sent: {to_send}")
     while True:
         sock_recv = sock.recv(1024)
-        recv = cli.receive(sock_recv)
+        cli.data_received(sock_recv)
+        recv = cli.next_event()
         if recv is None:
             #print(f"Received partial data from socket ({sock_recv}), reading more...")
             continue
@@ -83,7 +84,8 @@ def test_socket_telegram_with_session(transport_cls: type[BaseTransport], transp
     print(f"Sent: {to_send}")
     while True:
         sock_recv = sock.recv(1024)
-        recv = session.receive(sock_recv)
+        session.data_received(sock_recv)
+        recv = session.next_event()
         if recv is None:
             print(f"Received partial data from socket ({sock_recv}), reading more...")
             continue

@@ -396,13 +396,14 @@ class Session:
             response=True,
         )
 
-    def receive(self, data: bytes = b"") -> BaseEvent | None:
+    def data_received(self, data: bytes) -> None:
         self._conn.data_received(data)
 
+    def next_event(self) -> BaseEvent | None:
         if self._received:
             return self._received.popleft()
 
-        packet = self._pending_packet or self._conn.receive()
+        packet = self._pending_packet or self._conn.next_event()
         if packet is None:
             return None
 
