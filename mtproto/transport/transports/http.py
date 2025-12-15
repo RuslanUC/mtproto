@@ -99,7 +99,7 @@ class HttpTransport(BaseTransport):
             elif isinstance(event, h11.Request):
                 self._need_cors_headers = b"w" in event.target.rpartition(b"/")[-1]
                 for header in event.headers:
-                    if header[0] == "content-length":
+                    if header[0] == b"content-length":
                         try:
                             self._length = int(header[1])
                         except ValueError:
