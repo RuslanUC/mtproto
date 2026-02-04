@@ -66,7 +66,7 @@ class Connection:
 
         if packet is not None:
             self._transport.write(packet)
-        return initial_data + self._tx_buffer.get_data()
+        return initial_data + (self._tx_buffer.get_data() if self._tx_buffer.size() else b"")
 
     def has_packet(self) -> bool:
         return self._transport is not None and self._transport.has_packet()

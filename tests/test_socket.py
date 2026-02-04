@@ -1,4 +1,6 @@
+import logging
 import socket
+import sys
 from os import urandom
 from time import time
 
@@ -21,6 +23,7 @@ default_parameters_no_full = [
     (transports.PaddedIntermediateTransport, True,),
     (transports.FullTransport, False,),
     (transports.HttpTransport, False,),
+    (transports.WsClientTransport, False,),
 ]
 default_parametrize = pt.mark.parametrize("transport_cls,transport_obf", default_parameters_no_full)
 
@@ -58,6 +61,8 @@ def test_socket_telegram(transport_cls: type[BaseTransport], transport_obf: bool
         sock_recv = sock.recv(1024)
         cli.data_received(sock_recv)
         recv = cli.next_event()
+        if to_send := cli.send(None):
+            sock.send(to_send)
         if recv is None:
             #print(f"Received partial data from socket ({sock_recv}), reading more...")
             continue
@@ -86,6 +91,8 @@ def test_socket_telegram_with_session(transport_cls: type[BaseTransport], transp
         sock_recv = sock.recv(1024)
         session.data_received(sock_recv)
         recv = session.next_event()
+        if to_send := session.bytes_to_send():
+            sock.send(to_send)
         if recv is None:
             print(f"Received partial data from socket ({sock_recv}), reading more...")
             continue

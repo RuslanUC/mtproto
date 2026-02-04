@@ -133,5 +133,11 @@ class BaseTransport(ABC):
             return transports.FullTransport(ConnectionRole.CLIENT)
         elif issubclass(transport_cls, transports.HttpTransport):
             return transports.HttpTransport(ConnectionRole.CLIENT)
+        elif issubclass(transport_cls, transports.WsClientTransport):
+            return transports.WsClientTransport(ConnectionRole.CLIENT)
 
         raise ValueError(f"Unknown transport class: {transport_cls}")
+
+
+class TcpTransport(BaseTransport, ABC):
+    ...

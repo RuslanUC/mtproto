@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from zlib import crc32
 
-from .base_transport import BaseTransport
+from .base_transport import TcpTransport
 from ..buffer import TxBuffer
 from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 
-class FullTransport(BaseTransport):
+class FullTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = False
 
     __slots__ = ("_seq_no_r", "_seq_no_w",)

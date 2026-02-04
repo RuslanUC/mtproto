@@ -52,6 +52,9 @@ class TxBuffer:
         data, self._data = self._data, b""
         return data
 
+    def size(self) -> int:
+        return len(self._data)
+
 
 class ObfuscatedRxBuffer(RxBuffer):
     __slots__ = ("_buffer", "_decrypt")
@@ -96,3 +99,6 @@ class ObfuscatedTxBuffer(TxBuffer):
 
     def get_data(self) -> bytes:
         return ctr256_encrypt(self._buffer.get_data(), *self._encrypt)
+
+    def size(self) -> int:
+        return self._buffer.size()

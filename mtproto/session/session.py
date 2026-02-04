@@ -280,6 +280,9 @@ class Session:
 
         return to_send
 
+    def bytes_to_send(self) -> bytes:
+        return self._conn.send(None)
+
     def send_session_created(self, first_message_id: int) -> None:
         self.queue(NewSessionCreated(
             first_msg_id=first_message_id,

@@ -4,3 +4,4 @@ from .intermediate import IntermediateTransport
 from .obfuscated import ObfuscatedTransport
 from .padded_intermediate import PaddedIntermediateTransport
 from .http import HttpTransport
+from .ws import WsClientTransport

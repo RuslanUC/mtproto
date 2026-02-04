@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from mtproto.crypto.aes import CtrTuple
-from .base_transport import BaseTransport
+from .base_transport import BaseTransport, TcpTransport
 from ..buffer import TxBuffer, RxBuffer, ObfuscatedRxBuffer, ObfuscatedTxBuffer
 from ..packets import BasePacket
 
@@ -11,7 +11,7 @@ class ObfuscatedTransport(BaseTransport):
 
     __slots__ = ("_transport", "_encrypt", "_decrypt",)
 
-    def __init__(self, transport: BaseTransport, encrypt: CtrTuple, decrypt: CtrTuple) -> None:
+    def __init__(self, transport: TcpTransport, encrypt: CtrTuple, decrypt: CtrTuple) -> None:
         super().__init__(transport.our_role)
 
         self._transport = transport

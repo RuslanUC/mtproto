@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from mtproto.enums import ConnectionRole
-from .base_transport import BaseTransport
+from .base_transport import TcpTransport
 from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 
-class IntermediateTransport(BaseTransport):
+class IntermediateTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = True
 
     def read(self, *, _peek: bool = False) -> BasePacket | None:

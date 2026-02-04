@@ -9,7 +9,7 @@ except ImportError:
 
 from mtproto.enums import ConnectionRole
 from .base_transport import BaseTransport, BaseTransportParam
-from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
+from ..packets import BasePacket, ErrorPacket, MessagePacket
 
 _CORS_HEADERS = [
     (b"Access-Control-Allow-Origin", b"*"),
