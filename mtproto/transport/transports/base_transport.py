@@ -22,10 +22,14 @@ class BaseTransport(ABC):
 
     __slots__ = ("our_role", "rx_buffer", "tx_buffer",)
 
-    def __init__(self, role: ConnectionRole, rx_buffer: RxBuffer, tx_buffer: TxBuffer):
+    def __init__(self, role: ConnectionRole, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> None:
         self.our_role = role
         self.rx_buffer = rx_buffer
         self.tx_buffer = tx_buffer
+
+    @property
+    def is_obfuscated(self) -> bool:
+        return self.rx_buffer.is_obfuscated and self.tx_buffer.is_obfuscated
 
     @abstractmethod
     def read(self) -> BasePacket | None: ...
@@ -88,6 +92,9 @@ class BaseTransport(ABC):
             return transports.PaddedIntermediateTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
         elif header == b"POST":
             return transports.HttpTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
+        elif header == b"GET ":
+            # GET requests cannot have body, so assuming that transport is ws
+            return transports.WsTransport(ConnectionRole.SERVER)
         elif rx_buf.peekexactly(4, 4) == b"\x00" * 4:
             return transports.FullTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
         elif len(rx_buf) < 64:
@@ -129,8 +136,8 @@ class BaseTransport(ABC):
             transport = transports.FullTransport(ConnectionRole.CLIENT, rx_buf, tx_buf)
         elif issubclass(transport_cls, transports.HttpTransport):
             transport = transports.HttpTransport(ConnectionRole.CLIENT, rx_buf, tx_buf)
-        elif issubclass(transport_cls, transports.WsClientTransport):
-            transport = transports.WsClientTransport(ConnectionRole.CLIENT, rx_buf, tx_buf)
+        elif issubclass(transport_cls, transports.WsTransport):
+            transport = transports.WsTransport(ConnectionRole.CLIENT, rx_buf, tx_buf)
         else:
             raise ValueError(f"Unknown transport class: {transport_cls}")
 

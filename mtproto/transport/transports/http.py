@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from .. import RxBuffer, TxBuffer
+
 try:
     import h11
 except ImportError:
@@ -54,11 +56,11 @@ class HttpTransport(BaseTransport):
         "_skip_data",
     )
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, role: ConnectionRole, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> None:
         if h11 is None:
             raise RuntimeError("h11 is required for http transport")
 
-        super().__init__(*args, **kwargs)
+        super().__init__(role, rx_buffer, tx_buffer)
 
         self._conn: h11.Connection | None = None
         self._need_cors_headers = False

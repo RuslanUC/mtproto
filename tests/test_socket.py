@@ -23,7 +23,7 @@ default_parameters_no_full = [
     (transports.PaddedIntermediateTransport, True,),
     (transports.FullTransport, False,),
     (transports.HttpTransport, False,),
-    (transports.WsClientTransport, False,),
+    (transports.WsTransport, False,),
 ]
 default_parametrize = pt.mark.parametrize("transport_cls,transport_obf", default_parameters_no_full)
 

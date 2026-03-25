@@ -19,9 +19,14 @@ default_parameters_no_full = [
     (transports.PaddedIntermediateTransport, False,),
     (transports.PaddedIntermediateTransport, True,),
 ]
-default_parametrize = pt.mark.parametrize("transport_cls,transport_obf", [
+default_parameters_no_http = [
     *default_parameters_no_full,
     (transports.FullTransport, False,),
+]
+parametrize_no_http = pt.mark.parametrize("transport_cls,transport_obf", default_parameters_no_http)
+default_parametrize = pt.mark.parametrize("transport_cls,transport_obf", [
+    *default_parameters_no_http,
+    (transports.HttpTransport, False,),
 ])
 
 
@@ -82,7 +87,7 @@ def test_error(transport_cls: type[BaseTransport], transport_obf: bool):
     srv.data_received(cli.send(UnencryptedMessagePacket(0, b"1234")))
     assert srv.next_event() is not None
 
-    error_code = randint(300, 599)
+    error_code = randint(400, 599)
     to_send = srv.send(ErrorPacket(error_code))
     cli.data_received(to_send)
     received = cli.next_event()
@@ -194,7 +199,7 @@ def test_encrypt_decrypt(transport_cls: type[BaseTransport], transport_obf: bool
     assert received.data == to_send_decrypted.data
 
 
-@default_parametrize
+@parametrize_no_http
 def test_has_packet(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
@@ -289,7 +294,7 @@ def test_opposite(transport_cls: type[BaseTransport], transport_obf: bool):
     assert opp._transport_obf == transport_obf
 
 
-@default_parametrize
+@parametrize_no_http
 def test_peek_small_unencrypted(transport_cls: type[BaseTransport], transport_obf: bool):
     srv = Connection(ConnectionRole.SERVER)
     cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)

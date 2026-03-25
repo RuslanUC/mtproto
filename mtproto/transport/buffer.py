@@ -3,18 +3,26 @@ from __future__ import annotations
 from mtproto.crypto.aes import ctr256_decrypt, ctr256_encrypt, CtrTuple
 
 
-class RxBuffer:
-    __slots__ = ("_data", "_decrypt",)
+class _BaseBuffer:
+    __slots__ = ("_data", "_ctr",)
 
     def __init__(self, data: bytes = b""):
         self._data = bytearray(data)
-        self._decrypt = None
+        self._ctr: CtrTuple | None = None
 
     def __len__(self) -> int:
         return len(self._data)
 
     def __bool__(self) -> bool:
         return bool(len(self))
+
+    @property
+    def is_obfuscated(self) -> bool:
+        return self._ctr is not None
+
+
+class RxBuffer(_BaseBuffer):
+    __slots__ = ()
 
     def readexactly(self, n: int) -> bytes | None:
         if len(self) < n:
@@ -38,35 +46,28 @@ class RxBuffer:
     def data_received(self, data: bytes) -> None:
         if not data:
             return
-        if self._decrypt:
-            data = ctr256_decrypt(data, *self._decrypt)
+        if self._ctr:
+            data = ctr256_decrypt(data, *self._ctr)
         self._data += data
 
     def deobfuscate(self, decrypt: CtrTuple, decrypt_existing: bool = True) -> None:
-        self._decrypt = decrypt
+        self._ctr = decrypt
         if decrypt_existing and self._data:
-            self._data = bytearray(ctr256_decrypt(self._data, *self._decrypt))
+            self._data = bytearray(ctr256_decrypt(self._data, *self._ctr))
 
 
-class TxBuffer:
-    __slots__ = ("_data", "_encrypt",)
-
-    def __init__(self, data: bytes = b""):
-        self._data = bytearray(data)
-        self._encrypt = None
-
-    def __len__(self) -> int:
-        return len(self._data)
+class TxBuffer(_BaseBuffer):
+    __slots__ = ()
 
     def data(self) -> bytearray:
         return self._data
 
     def write(self, data: bytes | TxBuffer) -> None:
         if isinstance(data, TxBuffer):
-            assert data._encrypt is None
+            assert data._ctr is None
             data = data.get_data()
-        if self._encrypt:
-            data = ctr256_encrypt(data, *self._encrypt)
+        if self._ctr:
+            data = ctr256_encrypt(data, *self._ctr)
         self._data += data
 
     def get_data(self) -> bytes:
@@ -74,4 +75,4 @@ class TxBuffer:
         return data
 
     def obfuscate(self, encrypt: CtrTuple) -> None:
-        self._encrypt = encrypt
+        self._ctr = encrypt
