@@ -27,6 +27,7 @@ parametrize_no_http = pt.mark.parametrize("transport_cls,transport_obf", default
 default_parametrize = pt.mark.parametrize("transport_cls,transport_obf", [
     *default_parameters_no_http,
     (transports.HttpTransport, False,),
+    # (transports.WsTransport, False,),
 ])
 
 

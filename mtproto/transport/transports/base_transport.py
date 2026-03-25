@@ -88,7 +88,7 @@ class BaseTransport(ABC):
             return transports.HttpTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
         elif header == b"GET ":
             # GET requests cannot have body, so assuming that transport is ws
-            return transports.WsTransport(ConnectionRole.SERVER)
+            return transports.WsTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
         elif rx_buf.peekexactly(4, 4) == b"\x00" * 4:
             return transports.FullTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
         elif len(rx_buf) < 64:
