@@ -63,14 +63,15 @@ class TxBuffer:
 
     def write(self, data: bytes | TxBuffer) -> None:
         if isinstance(data, TxBuffer):
+            assert data._encrypt is None
             data = data.get_data()
+        if self._encrypt:
+            data = ctr256_encrypt(data, *self._encrypt)
         self._data += data
 
     def get_data(self) -> bytes:
         data, self._data = self._data, bytearray()
-        if self._encrypt:
-            return ctr256_encrypt(data, *self._encrypt)
-        return bytes(data)
+        return data
 
     def obfuscate(self, encrypt: CtrTuple) -> None:
         self._encrypt = encrypt
