@@ -9,7 +9,7 @@ class AbridgedTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = True
 
     def read(self, *, _peek: bool = False) -> BasePacket | None:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return None
 
         length = self.rx_buffer.peekexactly(1)[0]
@@ -26,7 +26,7 @@ class AbridgedTransport(TcpTransport):
 
         length *= 4
         length_bytes = 4 if big_length else 1
-        if self.rx_buffer.size() < (length + length_bytes):
+        if len(self.rx_buffer) < (length + length_bytes):
             return None
 
         if not _peek:
@@ -54,7 +54,7 @@ class AbridgedTransport(TcpTransport):
         self.tx_buffer.write(data)
 
     def _peek_length(self) -> tuple[int, int] | None:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return None
         length = self.rx_buffer.peekexactly(1)[0]
         if length & 0x80 == 0x80:
@@ -74,7 +74,7 @@ class AbridgedTransport(TcpTransport):
             return False
 
         length, length_size = length_maybe
-        return self.rx_buffer.size() >= (length + length_size)
+        return len(self.rx_buffer) >= (length + length_size)
 
     def peek(self) -> BasePacket | None:
         if not self.has_packet():

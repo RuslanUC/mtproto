@@ -81,7 +81,7 @@ class BaseTransport(ABC):
             return transports.HttpTransport(ConnectionRole.SERVER)
         elif buf.peekexactly(4, 4) == b"\x00" * 4:
             return transports.FullTransport(ConnectionRole.SERVER)
-        elif buf.size() < 64:
+        elif len(buf) < 64:
             return None
 
         nonce = buf.readexactly(64)

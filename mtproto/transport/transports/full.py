@@ -17,11 +17,11 @@ class FullTransport(TcpTransport):
         self._seq_no_r = self._seq_no_w = 0
 
     def read(self, *, _peek: bool = False) -> BasePacket | None:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return None
 
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little")
-        if self.rx_buffer.size() < length:
+        if len(self.rx_buffer) < length:
             return None
 
         length_bytes = self.rx_buffer.peekexactly(4, 0) if _peek else self.rx_buffer.readexactly(4)
@@ -62,11 +62,11 @@ class FullTransport(TcpTransport):
         self.tx_buffer.write(tmp)
 
     def has_packet(self) -> bool:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return False
 
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little")
-        return self.rx_buffer.size() >= length
+        return len(self.rx_buffer) >= length
 
     def peek(self) -> BasePacket | None:
         if not self.has_packet():
@@ -75,7 +75,7 @@ class FullTransport(TcpTransport):
         return self.read(_peek=True)
 
     def peek_length(self) -> int | None:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return None
 
         return int.from_bytes(self.rx_buffer.peekexactly(4), "little")

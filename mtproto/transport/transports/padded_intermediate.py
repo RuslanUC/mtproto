@@ -11,12 +11,12 @@ class PaddedIntermediateTransport(IntermediateTransport):
     SUPPORTS_OBFUSCATION = True
 
     def read(self, *, _peek: bool = False) -> BasePacket | None:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return None
 
         is_quick_ack = (self.rx_buffer.peekexactly(1)[0] & 0x80) == 0x80
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF
-        if self.rx_buffer.size() < length:
+        if len(self.rx_buffer) < length:
             return None
 
         if not _peek:
@@ -43,11 +43,11 @@ class PaddedIntermediateTransport(IntermediateTransport):
         self.tx_buffer.write(data)
 
     def has_packet(self) -> bool:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return False
 
         length = int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF
-        return self.rx_buffer.size() >= (length + 4)
+        return len(self.rx_buffer) >= (length + 4)
 
     def peek(self) -> BasePacket | None:
         if not self.has_packet():
@@ -56,7 +56,7 @@ class PaddedIntermediateTransport(IntermediateTransport):
         return self.read(_peek=True)
 
     def peek_length(self) -> int | None:
-        if self.rx_buffer.size() < 4:
+        if len(self.rx_buffer) < 4:
             return None
 
         return int.from_bytes(self.rx_buffer.peekexactly(4), "little") & 0x7FFFFFFF

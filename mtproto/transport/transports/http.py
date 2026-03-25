@@ -74,7 +74,7 @@ class HttpTransport(BaseTransport):
         if self._conn is None:
             self._conn = h11.Connection(our_role=h11.SERVER if self.our_role is ConnectionRole.SERVER else h11.CLIENT)
 
-        if self.rx_buffer.size():
+        if len(self.rx_buffer):
             self._conn.receive_data(self.rx_buffer.readall())
 
         if self._peeked_packet is not None:

@@ -56,12 +56,12 @@ class WsClientTransport(BaseTransport):
         if self._conn.state is not ConnectionState.OPEN:
             return
 
-        if self._init_tx is not None and self._init_tx.size():
+        if self._init_tx is not None and self._init_tx:
             self.tx_buffer.write(self._conn.send(BytesMessage(data=self._init_tx.get_data())))
             self._init_tx = None
             log.debug("Wrote transport init data")
 
-        if self._raw_tx.size():
+        if self._raw_tx:
             data = self._raw_tx.get_data()
             self.tx_buffer.write(self._conn.send(BytesMessage(data=data)))
             log.debug(f"Wrote {len(data)} bytes")
@@ -70,7 +70,7 @@ class WsClientTransport(BaseTransport):
         if self._conn is None or self._raw is None:
             raise RuntimeError("Unreachable, probably")
 
-        if self.rx_buffer.size():
+        if self.rx_buffer:
             self._conn.receive_data(self.rx_buffer.readall())
 
         self._write_maybe()

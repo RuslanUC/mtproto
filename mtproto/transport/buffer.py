@@ -7,25 +7,29 @@ class RxBuffer:
     __slots__ = ("_data",)
 
     def __init__(self, data: bytes = b""):
-        self._data = data
+        self._data = bytearray(data)
 
-    def size(self) -> int:
+    def __len__(self) -> int:
         return len(self._data)
 
+    def __bool__(self) -> bool:
+        return bool(len(self))
+
     def readexactly(self, n: int) -> bytes | None:
-        if self.size() < n:
+        if len(self) < n:
             return None
 
-        data, self._data = self._data[:n], self._data[n:]
+        data = self._data[:n]
+        del self._data[:n]
 
         return data
 
     def readall(self) -> bytes:
-        data, self._data = self._data, b""
-        return data
+        data, self._data = self._data, bytearray()
+        return bytes(data)
 
     def peekexactly(self, n: int, offset: int = 0) -> bytes | None:
-        if self.size() < (n + offset):
+        if len(self) < (n + offset):
             return None
 
         return self._data[offset:offset+n]
@@ -38,9 +42,12 @@ class TxBuffer:
     __slots__ = ("_data",)
 
     def __init__(self, data: bytes = b""):
-        self._data = data
+        self._data = bytearray(data)
 
-    def data(self) -> bytes:
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def data(self) -> bytearray:
         return self._data
 
     def write(self, data: bytes | TxBuffer) -> None:
@@ -49,11 +56,8 @@ class TxBuffer:
         self._data += data
 
     def get_data(self) -> bytes:
-        data, self._data = self._data, b""
-        return data
-
-    def size(self) -> int:
-        return len(self._data)
+        data, self._data = self._data, bytearray()
+        return bytes(data)
 
 
 class ObfuscatedRxBuffer(RxBuffer):
@@ -65,8 +69,8 @@ class ObfuscatedRxBuffer(RxBuffer):
         self._buffer = buffer
         self._decrypt = decrypt
 
-    def size(self) -> int:
-        return self._buffer.size()
+    def __len__(self) -> int:
+        return len(self._buffer)
 
     def readexactly(self, n: int) -> bytes | None:
         return self._buffer.readexactly(n)
@@ -91,7 +95,10 @@ class ObfuscatedTxBuffer(TxBuffer):
         self._buffer = buffer
         self._encrypt = encrypt
 
-    def data(self) -> bytes:
+    def __len__(self) -> int:
+        return len(self._buffer)
+
+    def data(self) -> bytearray:
         return self._buffer.data()
 
     def write(self, data: bytes | TxBuffer) -> None:
@@ -99,6 +106,3 @@ class ObfuscatedTxBuffer(TxBuffer):
 
     def get_data(self) -> bytes:
         return ctr256_encrypt(self._buffer.get_data(), *self._encrypt)
-
-    def size(self) -> int:
-        return self._buffer.size()
