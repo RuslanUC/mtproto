@@ -10,7 +10,7 @@ except ImportError:
     h11 = None
 
 from mtproto.enums import ConnectionRole
-from .base_transport import BaseTransport, BaseTransportParam
+from .base_transport import BaseTransport
 from ..packets import BasePacket, ErrorPacket, MessagePacket
 
 _CORS_HEADERS = [
@@ -23,33 +23,9 @@ _CORS_HEADERS = [
 log = logging.getLogger(__name__)
 
 
-class HttpTransportParam(BaseTransportParam):
-    __slots__ = ()
-
-
-class HttpTransportParamHost(HttpTransportParam):
-    __slots__ = ("host",)
-
-    def __init__(self, host: str) -> None:
-        self.host = host
-
-
-class HttpTransportParamKeepalive(HttpTransportParam):
-    __slots__ = ("enable",)
-
-    def __init__(self, enable: str) -> None:
-        self.enable = enable
-
-
-class HttpTransportParamCorsHeaders(HttpTransportParam):
-    __slots__ = ("enable",)
-
-    def __init__(self, enable: str) -> None:
-        self.enable = enable
-
-
 class HttpTransport(BaseTransport):
     SUPPORTS_OBFUSCATION = False
+    NAME = "http"
 
     __slots__ = (
         "_conn", "_need_cors_headers", "_length", "_peeked_packet", "_host", "_keep_alive", "_cors_headers",
@@ -182,16 +158,14 @@ class HttpTransport(BaseTransport):
     def peek_length(self) -> int | None:
         return self._length
 
-    def set_param(self, param: BaseTransportParam) -> None:
-        if not isinstance(param, HttpTransportParam):
-            return
+    def set_host(self, value: str) -> None:
+        self._host = value
 
-        if isinstance(param, HttpTransportParamHost):
-            self._host = param.host
-        elif isinstance(param, HttpTransportParamKeepalive):
-            self._keep_alive = param.enable
-        elif isinstance(param, HttpTransportParamCorsHeaders):
-            self._cors_headers = param.enable
+    def set_keepalive(self, value: bool) -> None:
+        self._keep_alive = value
+
+    def set_require_cors(self, value: bool) -> None:
+        self._cors_headers = value
 
     def ready_read(self) -> bool:
         if self._conn is None:

@@ -9,6 +9,7 @@ from ..packets import BasePacket, QuickAckPacket, MessagePacket, ErrorPacket
 
 class PaddedIntermediateTransport(IntermediateTransport):
     SUPPORTS_OBFUSCATION = True
+    NAME = "padded-intermediate"
 
     def read(self, *, _peek: bool = False) -> BasePacket | None:
         if len(self.rx_buffer) < 4:

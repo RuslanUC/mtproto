@@ -1,6 +1,4 @@
-import logging
 import socket
-import sys
 from os import urandom
 from time import time
 
@@ -12,7 +10,6 @@ from mtproto.session.messages import UnencryptedData
 from mtproto.transport import Connection, transports
 from mtproto.transport.packets import UnencryptedMessagePacket
 from mtproto.transport.transports.base_transport import BaseTransport
-from mtproto.transport.transports.http import HttpTransportParamHost
 
 default_parameters_no_full = [
     (transports.AbridgedTransport, False,),
@@ -46,7 +43,7 @@ class MsgId:
 def test_socket_telegram(transport_cls: type[BaseTransport], transport_obf: bool):
     cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
     if issubclass(transport_cls, transports.HttpTransport):
-        cli.set_transport_param(HttpTransportParamHost(host="149.154.167.40"))
+        cli.client_http_set_host("149.154.167.40")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(("149.154.167.40", 443))

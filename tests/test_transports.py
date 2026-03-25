@@ -291,7 +291,7 @@ def test_opposite(transport_cls: type[BaseTransport], transport_obf: bool):
 
     assert opp._role == ConnectionRole.SERVER
     assert opp._transport_cls == transport_cls
-    assert opp._transport_obf == transport_obf
+    assert opp._obfuscated == transport_obf
 
 
 @parametrize_no_http

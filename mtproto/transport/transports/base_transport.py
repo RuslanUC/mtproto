@@ -13,12 +13,9 @@ from mtproto.transport.packets import BasePacket
 HTTP_HEADER = {b"POST", b"GET ", b"HEAD", b"OPTI"}
 
 
-class BaseTransportParam:
-    __slots__ = ()
-
-
 class BaseTransport(ABC):
     SUPPORTS_OBFUSCATION: bool
+    NAME: str
 
     __slots__ = ("our_role", "rx_buffer", "tx_buffer",)
 
@@ -52,9 +49,6 @@ class BaseTransport(ABC):
 
     @abstractmethod
     def ready_write(self) -> bool:
-        ...
-
-    def set_param(self, param: BaseTransportParam) -> None:
         ...
 
     @classmethod

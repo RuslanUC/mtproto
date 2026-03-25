@@ -17,7 +17,7 @@ try:
 except ImportError:
     wsproto = None
 
-from .base_transport import BaseTransport, BaseTransportParam, TcpTransport
+from .base_transport import BaseTransport, TcpTransport
 from ..packets import BasePacket
 from mtproto.transport import transports
 from .. import RxBuffer, TxBuffer
@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 
 class WsTransport(BaseTransport):
     SUPPORTS_OBFUSCATION = False
+    NAME = "websocket"
 
     __slots__ = (
         "_conn", "_raw", "_raw_rx", "_raw_tx", "_peeked_packet",
@@ -122,9 +123,6 @@ class WsTransport(BaseTransport):
 
     def peek_length(self) -> int | None:
         return self._raw.peek_length()
-
-    def set_param(self, param: BaseTransportParam) -> None:
-        ...
 
     def ready_read(self) -> bool:
         return self._conn is not None

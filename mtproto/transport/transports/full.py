@@ -9,6 +9,7 @@ from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 class FullTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = False
+    NAME = "full"
 
     __slots__ = ("_seq_no_r", "_seq_no_w",)
 

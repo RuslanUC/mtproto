@@ -7,6 +7,7 @@ from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 class IntermediateTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = True
+    NAME = "intermediate"
 
     def read(self, *, _peek: bool = False) -> BasePacket | None:
         if len(self.rx_buffer) < 4:
