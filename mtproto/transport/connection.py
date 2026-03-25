@@ -33,10 +33,9 @@ class Connection:
     def next_event(self) -> BasePacket | None:
         was_none = self._transport is None
         if self._transport is None and self._role is ConnectionRole.SERVER:
-            self._transport = BaseTransport.from_buffer(self._rx_buffer)
+            self._transport = BaseTransport.from_buffer(self._rx_buffer, self._tx_buffer)
             if self._transport is None:
                 return None
-            self._rx_buffer, self._tx_buffer = self._transport.set_buffers(self._rx_buffer, self._tx_buffer)
         elif self._transport is None:
             raise ValueError("Transport should exist when receive() method is called and role is ConnectionRole.CLIENT")
 
@@ -48,14 +47,11 @@ class Connection:
         return self._transport.read()
 
     def send(self, packet: BasePacket | None) -> bytes:
-        initial_data = b""
-
         was_none = self._transport is None
         if self._transport is None and self._role is ConnectionRole.CLIENT:
-            init_buf = TxBuffer()
-            self._transport = BaseTransport.new(init_buf, self._transport_cls, self._transport_obf)
-            initial_data = init_buf.get_data()
-            self._rx_buffer, self._tx_buffer = self._transport.set_buffers(self._rx_buffer, self._tx_buffer)
+            self._transport = BaseTransport.new(
+                self._tx_buffer, self._rx_buffer, self._transport_cls, self._transport_obf,
+            )
         elif self._transport is None:
             raise ValueError("Transport should exist when send() method is called and role is ConnectionRole.SERVER")
 
@@ -66,7 +62,8 @@ class Connection:
 
         if packet is not None:
             self._transport.write(packet)
-        return initial_data + (self._tx_buffer.get_data() if self._tx_buffer else b"")
+
+        return self._tx_buffer.get_data() if self._tx_buffer else b""
 
     def has_packet(self) -> bool:
         return self._transport is not None and self._transport.has_packet()
