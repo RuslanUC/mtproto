@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from os import urandom
+from typing import cast, overload, Literal
 
 from mtproto.crypto.aes import ctr256_decrypt, ctr256_encrypt
 from mtproto.enums import ConnectionRole
@@ -59,8 +60,18 @@ class BaseTransport(ABC):
         ...
 
     @classmethod
-    def from_buffer(cls, buf: RxBuffer, _four_ef: bool = False) -> BaseTransport | None:
-        ef_count = 4 if _four_ef else 1
+    @overload
+    def from_buffer(cls, buf: RxBuffer, _for_obfuscated: Literal[False] = False) -> BaseTransport | None:
+        ...
+
+    @classmethod
+    @overload
+    def from_buffer(cls, buf: RxBuffer, _for_obfuscated: Literal[True] = False) -> TcpTransport | None:
+        ...
+
+    @classmethod
+    def from_buffer(cls, buf: RxBuffer, _for_obfuscated: bool = False) -> BaseTransport | None:
+        ef_count = 4 if _for_obfuscated else 1
         if (header := buf.peekexactly(ef_count)) is None:
             return None
 
@@ -102,7 +113,7 @@ class BaseTransport(ABC):
             if not transport_cls.SUPPORTS_OBFUSCATION:
                 raise ValueError(f"\"{transport_cls.__name__}\" transport does not support obfuscation")
             tmp_buf = TxBuffer()
-            non_obf_transport = cls.new(tmp_buf, transport_cls, False)
+            non_obf_transport = cast(TcpTransport, cls.new(tmp_buf, transport_cls, False))
 
             while True:
                 nonce = bytearray(urandom(64))
