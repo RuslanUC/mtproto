@@ -34,7 +34,7 @@ class WsClientTransport(BaseTransport):
     SUPPORTS_OBFUSCATION = False
 
     __slots__ = (
-        "_conn", "_raw", "_raw_rx", "_raw_tx", "_init_tx", "_peeked_packet",
+        "_conn", "_raw", "_raw_rx", "_raw_tx", "_peeked_packet",
     )
 
     def __init__(self, *args, **kwargs) -> None:
@@ -47,7 +47,6 @@ class WsClientTransport(BaseTransport):
         self._raw: TcpTransport | None = None
         self._raw_rx = RxBuffer()
         self._raw_tx = TxBuffer()
-        self._init_tx = TxBuffer()
 
         self._peeked_packet: BasePacket | None = None
 
@@ -55,11 +54,6 @@ class WsClientTransport(BaseTransport):
         log.debug(f"Wsproto state is {self._conn.state}")
         if self._conn.state is not ConnectionState.OPEN:
             return
-
-        if self._init_tx is not None and self._init_tx:
-            self.tx_buffer.write(self._conn.send(BytesMessage(data=self._init_tx.get_data())))
-            self._init_tx = None
-            log.debug("Wrote transport init data")
 
         if self._raw_tx:
             data = self._raw_tx.get_data()
@@ -93,8 +87,7 @@ class WsClientTransport(BaseTransport):
             self._conn = wsproto.WSConnection(wsproto.ConnectionType.CLIENT)
             to_write = self._conn.send(Request(host="127.0.0.1", target="/apis", subprotocols=["binary"]))
             self.tx_buffer.write(to_write)
-            self._raw = BaseTransport.new(self._init_tx, transports.AbridgedTransport, True)
-            self._raw_rx, self._raw_tx = self._raw.set_buffers(self._raw_rx, self._raw_tx)
+            self._raw = BaseTransport.new(self._raw_tx, self._raw_rx, transports.AbridgedTransport, True)
 
         self._raw.write(packet)
         self._write_maybe()
