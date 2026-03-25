@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from mtproto.crypto.aes import CtrTuple
 from .base_transport import BaseTransport, TcpTransport
-from ..buffer import TxBuffer, RxBuffer, ObfuscatedRxBuffer, ObfuscatedTxBuffer
+from ..buffer import TxBuffer, RxBuffer
 from ..packets import BasePacket
 
 
@@ -19,14 +19,10 @@ class ObfuscatedTransport(BaseTransport):
         self._decrypt = decrypt
 
     def set_buffers(self, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> tuple[RxBuffer, TxBuffer]:
-        back_rx, back_tx = RxBuffer(), TxBuffer()
-        obf_rx = ObfuscatedRxBuffer(back_rx, self._decrypt)
-        obf_tx = ObfuscatedTxBuffer(back_tx, self._encrypt)
-        obf_rx.data_received(rx_buffer.readall())
+        rx_buffer.deobfuscate(self._decrypt)
+        tx_buffer.obfuscate(self._encrypt)
 
-        self._transport.set_buffers(back_rx, back_tx)
-
-        return obf_rx, obf_tx
+        return self._transport.set_buffers(rx_buffer, tx_buffer)
 
     def read(self) -> BasePacket | None:
         return self._transport.read()
