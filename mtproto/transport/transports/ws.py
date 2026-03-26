@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from wsproto import ConnectionState
-from wsproto.events import Request, BytesMessage, AcceptConnection
+from wsproto.events import Request, BytesMessage, AcceptConnection, CloseConnection
 
 from ... import ConnectionRole
 
@@ -83,20 +83,32 @@ class WsTransport(BaseTransport):
             log.debug(f"Wsproto state is {self._conn.state}")
             if isinstance(event, BytesMessage):
                 self._raw_rx.data_received(event.data)
-                if self.our_role is ConnectionRole.SERVER and self._raw is None:
-                    self._raw = BaseTransport.from_buffer(self._raw_rx, self._raw_tx)
-                    if self._raw is not None and not self._raw.is_obfuscated:
-                        ...  # TODO: disconnect
-                if self._raw is not None:
-                    return self._raw.read()
             elif self.our_role is ConnectionRole.CLIENT and isinstance(event, AcceptConnection):
                 self._write_maybe()
             elif self.our_role is ConnectionRole.SERVER and isinstance(event, Request):
                 if "binary" not in event.subprotocols:
-                    ...  # TODO: disconnect
-                self._conn.send(AcceptConnection(subprotocol="binary"))
+                    self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
+                    ...  # TODO: return "disconnect" event
+                target = event.target.rpartition("/")[1]
+                if target.endswith("_test"):
+                    target = target[:-5]
+                if not target.startswith("api"):
+                    self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
+                    ...  # TODO: return "disconnect" event
+                if "w" not in target[:-2]:
+                    self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
+                    ...  # TODO: return "disconnect" event
+                self._raw_tx.write(self._conn.send(AcceptConnection(subprotocol="binary")))
             else:
                 log.warning(f"Got unknown event: {event!r}")
+
+        if self.our_role is ConnectionRole.SERVER and self._raw is None:
+            self._raw = BaseTransport.from_buffer(self._raw_rx, self._raw_tx)
+            if self._raw is not None and not self._raw.is_obfuscated:
+                self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
+                ...  # TODO: return "disconnect" event
+        if self._raw is not None:
+            return self._raw.read()
 
     def write(self, packet: BasePacket) -> None:
         if self._conn is None and self.our_role is ConnectionRole.CLIENT:

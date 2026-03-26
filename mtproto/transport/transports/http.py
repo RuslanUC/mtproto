@@ -122,9 +122,8 @@ class HttpTransport(BaseTransport):
             if to_write := self._conn.send(h11.EndOfMessage()):
                 self.tx_buffer.write(to_write)
 
-            if self.our_role is ConnectionRole.CLIENT:
-                log.debug("New h11 cycle")
-                self._conn.start_next_cycle()
+            log.debug("New h11 cycle")
+            self._conn.start_next_cycle()
         else:
             headers = [
                 (b"host", self._host),
