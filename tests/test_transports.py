@@ -2,7 +2,7 @@ from os import urandom
 from random import randint
 from zlib import crc32
 
-from mtproto.enums import ConnectionRole
+from mtproto.enums import ConnectionRole, TransportEvent
 from mtproto.transport import Connection, transports
 from mtproto.transport.packets import UnencryptedMessagePacket, QuickAckPacket, ErrorPacket, EncryptedMessagePacket, \
     BasePacket, DecryptedMessagePacket
@@ -353,3 +353,18 @@ def test_byte_by_byte(transport_cls: type[BaseTransport], transport_obf: bool):
     assert received == packet
 
     assert not srv.has_packet()
+
+
+@parametrize_no_http
+def test_packet_too_large(transport_cls: type[BaseTransport], transport_obf: bool):
+    srv = Connection(ConnectionRole.SERVER)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
+
+    assert not srv.has_packet()
+    assert not cli.has_packet()
+
+    packet = UnencryptedMessagePacket(1, bytearray(1024 * 1024 * 2))
+    srv.data_received(cli.send(packet))
+    assert srv.next_event() is TransportEvent.DISCONNECT
+    assert srv.peek_packet() is TransportEvent.DISCONNECT
+    assert srv.next_event() is TransportEvent.DISCONNECT
