@@ -6,8 +6,10 @@ This library implements the following MTProto transports:
 - Abridged
 - Intermediate
 - Padded Intermediate
+- Obfuscated versions of all above
 - Full
-- Obfuscated versions of all above (except Full)
+- HTTP
+- Websocket
 
 ## Installation
 ```shell
