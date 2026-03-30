@@ -29,6 +29,8 @@ jobs:
       - name: Run tests
         run: |
           poetry run pytest -s --cov-report=xml --cov-append --cov=mtproto tests
+        env:
+          PYTHON_GIL: 0
 
       - name: Print coverage report
         run: |
