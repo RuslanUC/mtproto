@@ -83,7 +83,7 @@ def test_socket_telegram_with_session(transport_cls: type[BaseTransport], transp
         b"\xbe\x7e\x8e\xf1"[::-1] + urandom(16)  # req_pq_multi#be7e8ef1 nonce:int128
     )
     sock.send(to_send)
-    print(f"Sent: {to_send}")
+    # print(f"Sent: {to_send}")
     while True:
         sock_recv = sock.recv(1024)
         session.data_received(sock_recv)
@@ -91,9 +91,9 @@ def test_socket_telegram_with_session(transport_cls: type[BaseTransport], transp
         if to_send := session.bytes_to_send():
             sock.send(to_send)
         if recv is None:
-            print(f"Received partial data from socket ({sock_recv}), reading more...")
+            # print(f"Received partial data from socket ({sock_recv}), reading more...")
             continue
-        print(f"Received: {recv}")
+        # print(f"Received: {recv}")
         assert isinstance(recv, UnencryptedData)
         assert recv.data[:4] == b"\x05\x16\x24\x63"[::-1]
 

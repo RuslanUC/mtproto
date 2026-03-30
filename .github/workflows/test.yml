@@ -28,7 +28,7 @@ jobs:
 
       - name: Run tests
         run: |
-          poetry run pytest -s --disable-warnings --cov-report=xml --cov-append --cov=mtproto tests
+          poetry run pytest -s --cov-report=xml --cov-append --cov=mtproto tests
 
       - name: Print coverage report
         run: |
