@@ -36,18 +36,26 @@ class Connection(Generic[TransportT]):
         if data:
             self._rx_buffer.data_received(data)
 
-    def next_event(self) -> BasePacket | None:
-        if self._transport is None and self._role is ConnectionRole.SERVER:
-            self._transport = BaseTransport.from_buffer(self._rx_buffer, self._tx_buffer)
-            if self._transport is None:
-                return None
-            if isinstance(self._transport, HttpTransport) and self._transport_param_http_keepalive is not None:
-                self._transport.set_keepalive(self._transport_param_http_keepalive)
-        elif self._transport is None:
+    def _create_transport_if_does_not_exist(self, fail_on_client: bool) -> None:
+        if self._transport is not None:
+            return
+        if self._role is not ConnectionRole.SERVER:
+            if not fail_on_client:
+                return
             raise ValueError(
                 "Transport should exist when next_event() method is called and role is ConnectionRole.CLIENT"
             )
 
+        self._transport = BaseTransport.from_buffer(self._rx_buffer, self._tx_buffer)
+        if self._transport is None:
+            return None
+        if isinstance(self._transport, HttpTransport) and self._transport_param_http_keepalive is not None:
+            self._transport.set_keepalive(self._transport_param_http_keepalive)
+
+    def next_event(self) -> BasePacket | None:
+        self._create_transport_if_does_not_exist(True)
+        if self._transport is None:
+            return None
         return self._transport.read()
 
     def _client_make_transport_maybe(self) -> None:
@@ -66,13 +74,12 @@ class Connection(Generic[TransportT]):
         return self._tx_buffer.get_data() if self._tx_buffer else b""
 
     def has_packet(self) -> bool:
+        self._create_transport_if_does_not_exist(False)
         return self._transport is not None and self._transport.has_packet()
 
     def peek_packet(self) -> BasePacket | None:
+        self._create_transport_if_does_not_exist(True)
         return self._transport.peek() if self._transport is not None else None
-
-    def peek_length(self) -> int | None:
-        return self._transport.peek_length() if self._transport is not None else None
 
     def opposite(self, require_transport: bool = True) -> Connection | None:
         if self._transport_cls is None:

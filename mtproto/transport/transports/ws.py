@@ -6,6 +6,7 @@ from wsproto import ConnectionState
 from wsproto.events import Request, BytesMessage, AcceptConnection, CloseConnection
 
 from ... import ConnectionRole
+from ...enums import TransportEvent
 
 try:
     import h11
@@ -36,22 +37,24 @@ class WsTransport(BaseTransport):
     SUPPORTS_OBFUSCATION = False
     NAME = "websocket"
 
-    __slots__ = (
-        "_conn", "_raw", "_raw_rx", "_raw_tx", "_peeked_packet",
-    )
+    __slots__ = ("_conn", "_raw", "_raw_rx", "_raw_tx",)
 
-    def __init__(self, role: ConnectionRole, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> None:
+    def __init__(
+            self,
+            role: ConnectionRole,
+            rx_buffer: RxBuffer,
+            tx_buffer: TxBuffer,
+            max_packet_size: int = 1024 * 1024,
+    ) -> None:
         if h11 is None or wsproto is None:
             raise RuntimeError("h11 and wsproto are required for ws transport")
 
-        super().__init__(role, rx_buffer, tx_buffer)
+        super().__init__(role, rx_buffer, tx_buffer, max_packet_size)
 
         self._conn: wsproto.WSConnection | None = None
         self._raw: TcpTransport | None = None
         self._raw_rx = RxBuffer()
         self._raw_tx = TxBuffer()
-
-        self._peeked_packet: BasePacket | None = None
 
     def _write_maybe(self) -> None:
         log.debug(f"Wsproto state is {self._conn.state}")
@@ -63,7 +66,7 @@ class WsTransport(BaseTransport):
             self.tx_buffer.write(self._conn.send(BytesMessage(data=data)))
             log.debug(f"Wrote {len(data)} bytes")
 
-    def read(self) -> BasePacket | None:
+    def read(self) -> BasePacket | TransportEvent | None:
         if self._conn is None and self.our_role is ConnectionRole.CLIENT:
             raise RuntimeError("Unreachable, probably")
         elif self._conn is None and self.our_role is ConnectionRole.SERVER:
@@ -72,11 +75,10 @@ class WsTransport(BaseTransport):
         if self.rx_buffer:
             self._conn.receive_data(self.rx_buffer.readall())
 
-        self._write_maybe()
+        return super().read()
 
-        if self._peeked_packet is not None:
-            to_return, self._peeked_packet = self._peeked_packet, None
-            return to_return
+    def _read(self) -> BasePacket | TransportEvent | None:
+        self._write_maybe()
 
         for event in self._conn.events():
             log.debug(f"Got wsproto event {event}")
@@ -88,16 +90,16 @@ class WsTransport(BaseTransport):
             elif self.our_role is ConnectionRole.SERVER and isinstance(event, Request):
                 if "binary" not in event.subprotocols:
                     self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
-                    ...  # TODO: return "disconnect" event
-                target = event.target.rpartition("/")[1]
+                    return TransportEvent.DISCONNECT
+                target = event.target.rpartition("/")[2]
                 if target.endswith("_test"):
                     target = target[:-5]
                 if not target.startswith("api"):
                     self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
-                    ...  # TODO: return "disconnect" event
-                if "w" not in target[:-2]:
+                    return TransportEvent.DISCONNECT
+                if "w" not in target[-2:]:
                     self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
-                    ...  # TODO: return "disconnect" event
+                    return TransportEvent.DISCONNECT
                 self._raw_tx.write(self._conn.send(AcceptConnection(subprotocol="binary")))
             else:
                 log.warning(f"Got unknown event: {event!r}")
@@ -106,14 +108,14 @@ class WsTransport(BaseTransport):
             self._raw = BaseTransport.from_buffer(self._raw_rx, self._raw_tx)
             if self._raw is not None and not self._raw.is_obfuscated:
                 self._raw_tx.write(self._conn.send(CloseConnection(code=1000)))
-                ...  # TODO: return "disconnect" event
+                return TransportEvent.DISCONNECT
         if self._raw is not None:
             return self._raw.read()
 
     def write(self, packet: BasePacket) -> None:
         if self._conn is None and self.our_role is ConnectionRole.CLIENT:
             self._conn = wsproto.WSConnection(wsproto.ConnectionType.CLIENT)
-            to_write = self._conn.send(Request(host="127.0.0.1", target="/apis", subprotocols=["binary"]))
+            to_write = self._conn.send(Request(host="127.0.0.1", target="/apiws", subprotocols=["binary"]))
             self.tx_buffer.write(to_write)
             self._raw = BaseTransport.new(self._raw_tx, self._raw_rx, transports.AbridgedTransport, True)
         elif self._conn is None and self.our_role is ConnectionRole.SERVER:
@@ -122,19 +124,8 @@ class WsTransport(BaseTransport):
         self._raw.write(packet)
         self._write_maybe()
 
-    def has_packet(self) -> bool:
-        if self._peeked_packet is not None:
-            return True
+    def _has_packet(self) -> bool:
         return self.peek() is not None
-
-    def peek(self) -> BasePacket | None:
-        if self._peeked_packet is not None:
-            return self._peeked_packet
-        self._peeked_packet = self.read()
-        return self._peeked_packet
-
-    def peek_length(self) -> int | None:
-        return self._raw.peek_length()
 
     def ready_read(self) -> bool:
         return self._conn is not None

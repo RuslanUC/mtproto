@@ -10,3 +10,7 @@ class ConnectionRole(Enum):
     @classmethod
     def opposite(cls, role: ConnectionRole) -> ConnectionRole:
         return cls.SERVER if role is cls.CLIENT else cls.CLIENT
+
+
+class TransportEvent(Enum):
+    DISCONNECT = auto()

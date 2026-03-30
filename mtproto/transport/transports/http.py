@@ -9,7 +9,7 @@ try:
 except ImportError:
     h11 = None
 
-from mtproto.enums import ConnectionRole
+from mtproto.enums import ConnectionRole, TransportEvent
 from .base_transport import BaseTransport
 from ..packets import BasePacket, ErrorPacket, MessagePacket
 
@@ -28,36 +28,37 @@ class HttpTransport(BaseTransport):
     NAME = "http"
 
     __slots__ = (
-        "_conn", "_need_cors_headers", "_length", "_peeked_packet", "_host", "_keep_alive", "_cors_headers",
+        "_conn", "_need_cors_headers", "_length", "_host", "_keep_alive", "_cors_headers",
         "_skip_data",
     )
 
-    def __init__(self, role: ConnectionRole, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> None:
+    def __init__(
+            self,
+            role: ConnectionRole,
+            rx_buffer: RxBuffer,
+            tx_buffer: TxBuffer,
+            max_packet_size: int = 1024 * 1024,
+    ) -> None:
         if h11 is None:
             raise RuntimeError("h11 is required for http transport")
 
-        super().__init__(role, rx_buffer, tx_buffer)
+        super().__init__(role, rx_buffer, tx_buffer, max_packet_size)
 
         self._conn: h11.Connection | None = None
         self._need_cors_headers = False
         self._length: int | None = None
-        self._peeked_packet: BasePacket | None = None
         self._skip_data = False
 
         self._host = "127.0.0.1"
         self._keep_alive = True
         self._cors_headers = False
 
-    def read(self) -> BasePacket | None:
+    def _read(self) -> BasePacket | TransportEvent | None:
         if self._conn is None:
             self._conn = h11.Connection(our_role=h11.SERVER if self.our_role is ConnectionRole.SERVER else h11.CLIENT)
 
         if len(self.rx_buffer):
             self._conn.receive_data(self.rx_buffer.readall())
-
-        if self._peeked_packet is not None:
-            to_return, self._peeked_packet = self._peeked_packet, None
-            return to_return
 
         while True:
             event = self._conn.next_event()
@@ -81,12 +82,16 @@ class HttpTransport(BaseTransport):
                         try:
                             self._length = int(header[1])
                         except ValueError:
-                            # TODO: throw custom exception
-                            raise RuntimeError(f"Invalid \"Content-Length\" header: {header[1]!r}\"")
+                            log.debug("Invalid \"Content-Length\" header")
+                            return TransportEvent.DISCONNECT
+                        else:
+                            if self._length > self.max_packet_size:
+                                log.debug("Invalid packet length")
+                                return TransportEvent.DISCONNECT
                         break
                 else:
-                    # TODO: throw custom exception
-                    raise RuntimeError(f"No \"Content-Length\" in request\"")
+                    log.debug("\"Content-Length\" header is missing")
+                    return TransportEvent.DISCONNECT
                 continue
             elif isinstance(event, h11.Response):
                 if event.status_code >= 400:
@@ -143,19 +148,8 @@ class HttpTransport(BaseTransport):
             if to_write := self._conn.send(h11.EndOfMessage()):
                 self.tx_buffer.write(to_write)
 
-    def has_packet(self) -> bool:
-        if self._peeked_packet is not None:
-            return True
+    def _has_packet(self) -> bool:
         return self.peek() is not None
-
-    def peek(self) -> BasePacket | None:
-        if self._peeked_packet is not None:
-            return self._peeked_packet
-        self._peeked_packet = self.read()
-        return self._peeked_packet
-
-    def peek_length(self) -> int | None:
-        return self._length
 
     def set_host(self, value: str) -> None:
         self._host = value

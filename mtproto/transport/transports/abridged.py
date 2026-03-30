@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mtproto.enums import ConnectionRole
+from mtproto.enums import ConnectionRole, TransportEvent
 from .base_transport import TcpTransport
 from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
@@ -9,7 +9,9 @@ class AbridgedTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = True
     NAME = "abridged"
 
-    def read(self, *, _peek: bool = False) -> BasePacket | None:
+    __slots__ = ()
+
+    def _read(self) -> BasePacket | TransportEvent | None:
         if len(self.rx_buffer) < 4:
             return None
 
@@ -18,7 +20,7 @@ class AbridgedTransport(TcpTransport):
         length &= 0x7F
 
         if is_quick_ack and self.our_role == ConnectionRole.CLIENT:
-            data = self.rx_buffer.peekexactly(4) if _peek else self.rx_buffer.readexactly(4)
+            data = self.rx_buffer.readexactly(4)
             return QuickAckPacket(data[::-1])
 
         big_length = length & 0x7F == 0x7F
@@ -26,13 +28,15 @@ class AbridgedTransport(TcpTransport):
             length = int.from_bytes(self.rx_buffer.peekexactly(3, 1), "little")
 
         length *= 4
+        if length > self.max_packet_size:
+            return TransportEvent.DISCONNECT
+
         length_bytes = 4 if big_length else 1
         if len(self.rx_buffer) < (length + length_bytes):
             return None
 
-        if not _peek:
-            self.rx_buffer.readexactly(length_bytes)
-        data = self.rx_buffer.peekexactly(length, length_bytes) if _peek else self.rx_buffer.readexactly(length)
+        self.rx_buffer.readexactly(length_bytes)
+        data = self.rx_buffer.readexactly(length)
         if len(data) == 4:
             return ErrorPacket(int.from_bytes(data, "little", signed=True))
 
@@ -54,40 +58,23 @@ class AbridgedTransport(TcpTransport):
 
         self.tx_buffer.write(data)
 
-    def _peek_length(self) -> tuple[int, int] | None:
+    def _has_packet(self) -> bool:
         if len(self.rx_buffer) < 4:
-            return None
-        length = self.rx_buffer.peekexactly(1)[0]
-        if length & 0x80 == 0x80:
-            return None
-        length &= 0x7F
-
-        length_size = 1
-        if length & 0x7F == 0x7F:
-            length_size = 4
-            length = int.from_bytes(self.rx_buffer.peekexactly(3, 1), "little")
-
-        return length * 4, length_size
-
-    def has_packet(self) -> bool:
-        length_maybe = self._peek_length()
-        if length_maybe is None:
             return False
 
-        length, length_size = length_maybe
-        return len(self.rx_buffer) >= (length + length_size)
+        length = self.rx_buffer.peekexactly(1)[0]
 
-    def peek(self) -> BasePacket | None:
-        if not self.has_packet():
-            return None
+        if (length & 0x80 == 0x80) and self.our_role == ConnectionRole.CLIENT:
+            return True
 
-        return self.read(_peek=True)
+        length &= 0x7F
+        big_length = length == 0x7F
+        if big_length:
+            length = int.from_bytes(self.rx_buffer.peekexactly(3, 1), "little")
 
-    def peek_length(self) -> int | None:
-        length = self._peek_length()
-        if length is None:
-            return None
-        return length[0]
+        length *= 4
+        length += 4 if big_length else 1
+        return len(self.rx_buffer) >= length or length > self.max_packet_size
 
     def ready_read(self) -> bool:
         return True

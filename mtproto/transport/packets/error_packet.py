@@ -1,3 +1,5 @@
+from typing import Any
+
 from mtproto.utils import AutoRepr
 from .base_packet import BasePacket
 
@@ -10,3 +12,8 @@ class ErrorPacket(BasePacket, AutoRepr):
 
     def write(self) -> bytes:
         return (-self.error_code).to_bytes(4, "little", signed=True)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        return self.error_code == other.error_code

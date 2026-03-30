@@ -328,3 +328,28 @@ def test_peek_small_unencrypted(transport_cls: type[BaseTransport], transport_ob
     assert received_2.message_data == small_payload_2
 
     assert not srv.has_packet()
+
+
+@parametrize_no_http
+def test_byte_by_byte(transport_cls: type[BaseTransport], transport_obf: bool):
+    srv = Connection(ConnectionRole.SERVER)
+    cli = Connection(ConnectionRole.CLIENT, transport=transport_cls, obfuscated=transport_obf)
+
+    assert not srv.has_packet()
+    assert not cli.has_packet()
+
+    packet = UnencryptedMessagePacket(1, urandom(16))
+    to_send = cli.send(packet)
+
+    for pos, byte in enumerate(to_send, start=1):
+        srv.data_received(bytes([byte]))
+        if pos == len(to_send):
+            assert srv.has_packet()
+        else:
+            assert not srv.has_packet()
+
+    received = srv.next_event()
+    assert isinstance(received, UnencryptedMessagePacket)
+    assert received == packet
+
+    assert not srv.has_packet()

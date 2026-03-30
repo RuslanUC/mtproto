@@ -5,7 +5,7 @@ from os import urandom
 from typing import overload, Literal
 
 from mtproto.crypto.aes import ctr256_encrypt
-from mtproto.enums import ConnectionRole
+from mtproto.enums import ConnectionRole, TransportEvent
 from mtproto.transport import transports
 from mtproto.transport.buffer import RxBuffer, TxBuffer
 from mtproto.transport.packets import BasePacket
@@ -17,31 +17,54 @@ class BaseTransport(ABC):
     SUPPORTS_OBFUSCATION: bool
     NAME: str
 
-    __slots__ = ("our_role", "rx_buffer", "tx_buffer",)
+    __slots__ = ("our_role", "rx_buffer", "tx_buffer", "max_packet_size", "_peeked")
 
-    def __init__(self, role: ConnectionRole, rx_buffer: RxBuffer, tx_buffer: TxBuffer) -> None:
+    def __init__(
+            self,
+            role: ConnectionRole,
+            rx_buffer: RxBuffer,
+            tx_buffer: TxBuffer,
+            max_packet_size: int = 1024 * 1024,
+    ) -> None:
         self.our_role = role
         self.rx_buffer = rx_buffer
         self.tx_buffer = tx_buffer
+        self.max_packet_size = max_packet_size
+        self._peeked: BasePacket | TransportEvent | None = None
 
     @property
     def is_obfuscated(self) -> bool:
         return self.rx_buffer.is_obfuscated and self.tx_buffer.is_obfuscated
 
-    @abstractmethod
-    def read(self) -> BasePacket | None: ...
+    def read(self) -> BasePacket | TransportEvent | None:
+        if self._peeked is None:
+            return self._read()
+
+        result = self._peeked
+        self._peeked = None
+        return result
+
+    def has_packet(self) -> bool:
+        if self._peeked is not None:
+            return True
+        return self._has_packet()
+
+    def peek(self) -> BasePacket | TransportEvent | None:
+        if self._peeked is None:
+            self._peeked = self.read()
+        return self._peeked
 
     @abstractmethod
-    def write(self, packet: BasePacket) -> None: ...
+    def write(self, packet: BasePacket) -> None:
+        ...
 
     @abstractmethod
-    def has_packet(self) -> bool: ...
+    def _read(self) -> BasePacket | TransportEvent | None:
+        ...
 
     @abstractmethod
-    def peek(self) -> BasePacket | None: ...
-
-    @abstractmethod
-    def peek_length(self) -> int | None: ...
+    def _has_packet(self) -> bool:
+        ...
 
     @abstractmethod
     def ready_read(self) -> bool:

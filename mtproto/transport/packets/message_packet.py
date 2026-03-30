@@ -4,6 +4,7 @@ from abc import ABC
 from hashlib import sha256, sha1
 from io import BytesIO
 from os import urandom
+from typing import Any
 
 from mtproto.crypto import kdf, ige256_encrypt, ige256_decrypt
 from mtproto.crypto.aes import kdf_v1
@@ -43,6 +44,11 @@ class UnencryptedMessagePacket(MessagePacket, AutoRepr):
                 self.message_data
         )
 
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        return self.message_id == other.message_id and self.message_data == other.message_data
+
 
 class EncryptedMessagePacket(MessagePacket, AutoRepr):
     __slots__ = ("auth_key_id", "message_key", "encrypted_data", "needs_quick_ack",)
@@ -69,6 +75,16 @@ class EncryptedMessagePacket(MessagePacket, AutoRepr):
 
         decrypted = ige256_decrypt(self.encrypted_data, aes_key, aes_iv)
         return DecryptedMessagePacket.parse(decrypted)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        return (
+                self.auth_key_id == other.auth_key_id
+                and self.message_key == other.message_key
+                and self.encrypted_data == other.encrypted_data
+                and self.needs_quick_ack == other.needs_quick_ack
+        )
 
 
 class DecryptedMessagePacket(MessagePacket, AutoRepr):
@@ -142,4 +158,17 @@ class DecryptedMessagePacket(MessagePacket, AutoRepr):
 
         return QuickAckPacket(
             Int.write(-abs(Int.read_bytes(msg_key_large[:4])))
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+
+        return (
+                self.salt == other.salt
+                and self.session_id == other.session_id
+                and self.message_id == other.message_id
+                and self.seq_no == other.seq_no
+                and self.data == other.data
+                and self.padding == other.padding
         )
