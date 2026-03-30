@@ -11,36 +11,49 @@ This library implements the following MTProto transports:
 - HTTP
 - Websocket
 
+Also, this library has WIP "bring-your-own-I/O" implementation of the session layer or MTProto protocol.
+
 ## Installation
+
 ```shell
 pip install mtproto
 ```
+
 Note that in order to use obfuscated transports or encrypt/decrypt mtproto messages,
 you MUST specify at least one (if you install both, only tgcrypto will be used) 
-a crypto library in square brackets (currently tgcrypto and pyaes are supported):
+crypto library in square brackets (currently `tgcrypto` and `pyaes` are supported):
+
 ```shell
 pip install mtproto[tgcrypto]
-```
-or 
-```shell
+# or
 pip install mtproto[pyaes]
+```
+
+To use http or websocket transport, you'd need to install `http` or ws `extra`:
+```shell
+pip install mtproto[http]
+# or
+pip install mtproto[ws]
 ```
 
 ## Usage
 ```python
 from os import urandom
 
-from mtproto import Connection, ConnectionRole
-from mtproto.transports import IntermediateTransport
-from mtproto.packets import UnencryptedMessagePacket
+from mtproto import ConnectionRole
+from mtproto.transport import Connection
+from mtproto.transport import IntermediateTransport
+from mtproto.transport.packets import UnencryptedMessagePacket
 
 conn = Connection(
     ConnectionRole.CLIENT,
-    # Transport class to use, supported: AbridgedTransport, IntermediateTransport, PaddedIntermediateTransport, FullTransport
+    # Transport class to use, supported: 
+    #  AbridgedTransport, IntermediateTransport, PaddedIntermediateTransport, FullTransport, HttpTransport, WsTransport
     # Default is AbridgedTransport. You need to specify transport class only if you are using ConnectionRole.CLIENT role.
-    transport_cls=IntermediateTransport,
+    #  When role is ConnectionRole.SERVER, transport is ignored
+    transport=IntermediateTransport,
     # Whether to use transport obfuscation or not. Default is False. Obfuscation for FullTransport is not supported now. 
-    transport_obf=False,
+    obfuscated=True,
 )
 
 to_send = conn.send(UnencryptedMessagePacket(
@@ -52,7 +65,8 @@ to_send = conn.send(UnencryptedMessagePacket(
 ...
 # Receive data from telegram server
 received = ...
-packet = conn.receive(received)
+conn.data_received(received)
+packet = conn.next_event()
 
 print(packet)
 # UnencryptedMessagePacket(message_id=..., message_data=b"...")
