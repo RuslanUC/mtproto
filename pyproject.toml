@@ -45,8 +45,8 @@ ws = [
 ]
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.3"
-pytest-cov = "^5.0.0"
+pytest = "^9.0.2"
+pytest-cov = "^7.1.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -54,3 +54,15 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.coverage.run]
 data_file = "coverage.coverage"
+
+[tool.tortoise]
+tortoise_orm = "piltover.app_config.TORTOISE_ORM"
+
+[tool.pytest]
+python_classes = []
+filterwarnings = ["error"]
+strict_config = true
+strict_markers = true
+strict_parametrization_ids = true
+strict_xfail = false
+testpaths = ["tests"]
