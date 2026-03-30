@@ -26,11 +26,17 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-root --no-interaction --all-extras
 
+      - name: Disable GIL on free-threaded Python builds
+        run: |
+          if [[ "${{ matrix.python-version }}" == "3.13t" || "${{ matrix.python-version }}" == "3.14t" ]]; then
+            echo "PYTHON_GIL=0" >> $GITHUB_ENV
+          fi
+
       - name: Run tests
         run: |
           poetry run pytest -s --cov-report=xml --cov-append --cov=mtproto tests
         env:
-          PYTHON_GIL: 0
+          PYTHON_GIL: ${{ env.PYTHON_GIL }}
 
       - name: Print coverage report
         run: |
