@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mtproto"
-version = "0.2.2"
+version = "0.3.0b1"
 description = "Telegram MTProto protocol implementation"
 authors = ["RuslanUC <dev_ruslan_uc@protonmail.com>"]
 readme = "README.md"
@@ -13,10 +13,10 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
     "Topic :: Internet",
     "Topic :: Utilities",
@@ -27,7 +27,7 @@ Homepage = "https://github.com/RuslanUC/mtproto"
 Repository = "https://github.com/RuslanUC/mtproto"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.11"
 tgcrypto = { version = "^1.2.5", optional = true }
 pyaes = { version = "^1.6.1", optional = true }
 h11 = {version = "^0.16.0", optional = true}
