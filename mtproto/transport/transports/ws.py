@@ -2,12 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from wsproto import ConnectionState
-from wsproto.events import Request, BytesMessage, AcceptConnection, CloseConnection
-
-from ... import ConnectionRole
-from ...enums import TransportEvent
-
 try:
     import h11
 except ImportError:
@@ -15,13 +9,17 @@ except ImportError:
 
 try:
     import wsproto
+    from wsproto.events import Request, BytesMessage, AcceptConnection, CloseConnection
 except ImportError:
     wsproto = None
+    Request = BytesMessage = AcceptConnection = CloseConnection = None
 
 from .base_transport import BaseTransport, TcpTransport
 from ..packets import BasePacket
 from mtproto.transport import transports
 from .. import RxBuffer, TxBuffer
+from ... import ConnectionRole
+from ...enums import TransportEvent
 
 _CORS_HEADERS = [
     (b"Access-Control-Allow-Origin", b"*"),
@@ -58,7 +56,7 @@ class WsTransport(BaseTransport):
 
     def _write_maybe(self) -> None:
         log.debug(f"Wsproto state is {self._conn.state}")
-        if self._conn.state is not ConnectionState.OPEN:
+        if self._conn.state is not wsproto.ConnectionState.OPEN:
             return
 
         if self._raw_tx:
