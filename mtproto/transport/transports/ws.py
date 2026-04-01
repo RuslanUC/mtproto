@@ -19,7 +19,7 @@ from ..packets import BasePacket
 from mtproto.transport import transports
 from .. import RxBuffer, TxBuffer
 from ... import ConnectionRole
-from ...enums import TransportEvent
+from ...enums import TransportEvent, TransportType
 
 _CORS_HEADERS = [
     (b"Access-Control-Allow-Origin", b"*"),
@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 
 class WsTransport(BaseTransport):
     SUPPORTS_OBFUSCATION = False
-    NAME = "websocket"
+    TYPE = TransportType.WEBSOCKET
 
     __slots__ = ("_conn", "_raw", "_raw_rx", "_raw_tx",)
 

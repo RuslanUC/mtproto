@@ -9,7 +9,7 @@ try:
 except ImportError:
     h11 = None
 
-from mtproto.enums import ConnectionRole, TransportEvent
+from mtproto.enums import ConnectionRole, TransportEvent, TransportType
 from .base_transport import BaseTransport
 from ..packets import BasePacket, ErrorPacket, MessagePacket
 
@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 class HttpTransport(BaseTransport):
     SUPPORTS_OBFUSCATION = False
-    NAME = "http"
+    TYPE = TransportType.HTTP
 
     __slots__ = (
         "_conn", "_need_cors_headers", "_length", "_host", "_keep_alive", "_cors_headers",

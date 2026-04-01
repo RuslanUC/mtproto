@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum, auto
+from enum import Enum, auto, StrEnum
 
 
 class ConnectionRole(Enum):
@@ -14,3 +14,12 @@ class ConnectionRole(Enum):
 
 class TransportEvent(Enum):
     DISCONNECT = auto()
+
+
+class TransportType(StrEnum):
+    ABRIDGED = "abridged"
+    INTERMEDIATE = "intermediate"
+    PADDED_INTERMEDIATE = "padded-intermediate"
+    FULL = "full"
+    HTTP = "http"
+    WEBSOCKET = "websocket"

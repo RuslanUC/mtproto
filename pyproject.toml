@@ -1,6 +1,6 @@
 [project]
 name = "mtproto"
-version = "0.3.0b1"
+version = "0.3.0b2"
 description = "Telegram MTProto protocol implementation"
 requires-python = ">=3.11,<4.0"
 authors = [

@@ -5,12 +5,12 @@ from random import randint
 
 from . import IntermediateTransport
 from ..packets import BasePacket, QuickAckPacket, MessagePacket, ErrorPacket
-from ...enums import TransportEvent
+from ...enums import TransportEvent, TransportType
 
 
 class PaddedIntermediateTransport(IntermediateTransport):
     SUPPORTS_OBFUSCATION = True
-    NAME = "padded-intermediate"
+    TYPE = TransportType.PADDED_INTERMEDIATE
 
     __slots__ = ()
 

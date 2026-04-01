@@ -5,7 +5,7 @@ from os import urandom
 from typing import overload, Literal
 
 from mtproto.crypto.aes import ctr256_encrypt
-from mtproto.enums import ConnectionRole, TransportEvent
+from mtproto.enums import ConnectionRole, TransportEvent, TransportType
 from mtproto.transport import transports
 from mtproto.transport.buffer import RxBuffer, TxBuffer
 from mtproto.transport.packets import BasePacket
@@ -15,9 +15,9 @@ HTTP_HEADER = {b"POST", b"GET ", b"HEAD", b"OPTI"}
 
 class BaseTransport(ABC):
     SUPPORTS_OBFUSCATION: bool
-    NAME: str
+    TYPE: TransportType
 
-    __slots__ = ("our_role", "rx_buffer", "tx_buffer", "max_packet_size", "_peeked")
+    __slots__ = ("our_role", "rx_buffer", "tx_buffer", "max_packet_size", "_peeked",)
 
     def __init__(
             self,

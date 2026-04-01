@@ -6,8 +6,7 @@ from .buffer import RxBuffer, TxBuffer
 from .packets import BasePacket
 from .transports import AbridgedTransport, HttpTransport
 from .transports.base_transport import BaseTransport
-from ..enums import ConnectionRole
-
+from ..enums import ConnectionRole, TransportType
 
 TransportT = TypeVar("TransportT", bound=BaseTransport)
 
@@ -108,12 +107,12 @@ class Connection(Generic[TransportT]):
     ) -> None:
         if required_role is not None and self._role is not required_role:
             raise ValueError(
-                f"Cannot set {required_transport.NAME} transport \"{param_name}\" "
+                f"Cannot set {required_transport.TYPE.value} transport \"{param_name}\" "
                 f"parameter on SERVER connection.")
         if not issubclass(self._transport_cls, required_transport):
             raise ValueError(
-                f"Cannot set {required_transport.NAME} \"{param_name}\" "
-                f"parameter on {self._transport_cls.NAME} transport."
+                f"Cannot set {required_transport.TYPE.value} \"{param_name}\" "
+                f"parameter on {self._transport_cls.TYPE.value} transport."
             )
 
     def client_http_set_host(self: Connection[HttpTransport], value: str) -> None:
@@ -133,4 +132,14 @@ class Connection(Generic[TransportT]):
         self._check_role_and_transport_for_param(ConnectionRole.CLIENT, HttpTransport, "require_cors")
         self._client_make_transport_maybe()
         self._transport.set_require_cors(value)
+
+    @property
+    def is_transport_obfuscated(self) -> bool:
+        return self._transport is not None and self._transport.is_obfuscated
+
+    @property
+    def transport_type(self) -> TransportType | None:
+        if self._transport is None:
+            return None
+        return self._transport.TYp
 

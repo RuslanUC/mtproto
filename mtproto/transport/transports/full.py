@@ -5,12 +5,12 @@ from zlib import crc32
 from .base_transport import TcpTransport
 from ..buffer import TxBuffer, RxBuffer
 from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
-from ...enums import TransportEvent, ConnectionRole
+from ...enums import TransportEvent, ConnectionRole, TransportType
 
 
 class FullTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = False
-    NAME = "full"
+    TYPE = TransportType.FULL
 
     __slots__ = ("_seq_no_r", "_seq_no_w",)
 

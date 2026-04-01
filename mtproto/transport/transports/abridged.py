@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from mtproto.enums import ConnectionRole, TransportEvent
+from mtproto.enums import ConnectionRole, TransportEvent, TransportType
 from .base_transport import TcpTransport
 from ..packets import BasePacket, QuickAckPacket, ErrorPacket, MessagePacket
 
 
 class AbridgedTransport(TcpTransport):
     SUPPORTS_OBFUSCATION = True
-    NAME = "abridged"
+    TYPE = TransportType.ABRIDGED
 
     __slots__ = ()
 
