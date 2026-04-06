@@ -55,9 +55,6 @@ build-backend = "poetry.core.masonry.api"
 [tool.coverage.run]
 data_file = "coverage.coverage"
 
-[tool.tortoise]
-tortoise_orm = "piltover.app_config.TORTOISE_ORM"
-
 [tool.pytest]
 python_classes = []
 filterwarnings = ["error"]
