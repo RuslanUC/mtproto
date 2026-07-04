@@ -91,15 +91,19 @@ class BaseTransport(ABC):
     @classmethod
     def from_buffer(cls, rx_buf: RxBuffer, tx_buf: TxBuffer, _for_obfuscated: bool = False) -> BaseTransport | None:
         ef_count = 4 if _for_obfuscated else 1
-        if (header := rx_buf.peekexactly(ef_count)) is None:
+        if len(rx_buf) < ef_count:
             return None
+
+        header = rx_buf.peekexactly(ef_count)
 
         if header == b"\xef" * ef_count:
             rx_buf.readexactly(ef_count)
             return transports.AbridgedTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
 
-        if (header := rx_buf.peekexactly(4)) is None:
+        if len(rx_buf) < 4:
             return None
+
+        header = rx_buf.peekexactly(4)
 
         if header == b"\xee" * 4:
             rx_buf.readexactly(4)
@@ -112,7 +116,7 @@ class BaseTransport(ABC):
         elif header == b"GET ":
             # GET requests cannot have body, so assuming that transport is ws
             return transports.WsTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
-        elif rx_buf.peekexactly(4, 4) == b"\x00" * 4:
+        elif len(rx_buf) >= 8 and rx_buf.peekexactly(4, 4) == b"\x00" * 4:
             return transports.FullTransport(ConnectionRole.SERVER, rx_buf, tx_buf)
         elif len(rx_buf) < 64:
             return None

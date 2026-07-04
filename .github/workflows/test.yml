@@ -14,17 +14,16 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      - name: Install uv and set the Python version
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "poetry"
+          enable-cache: true
+          restore-cache: true
+          save-cache: true
 
       - name: Install dependencies
-        run: poetry install --no-root --no-interaction --all-extras
+        run: uv sync --locked --all-groups --all-extras --dev
 
       - name: Disable GIL on free-threaded Python builds
         run: |
@@ -34,13 +33,13 @@ jobs:
 
       - name: Run tests
         run: |
-          poetry run pytest -s --cov-report=xml --cov-append --cov=mtproto tests
+          uv run pytest -s --cov-report=xml --cov-append --cov=mtproto tests
         env:
           PYTHON_GIL: ${{ env.PYTHON_GIL }}
 
       - name: Print coverage report
         run: |
-          poetry run coverage report
+          uv run coverage report
 
 #      - name: Upload coverage reports to Codecov
 #        uses: codecov/codecov-action@v5
