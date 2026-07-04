@@ -24,22 +24,22 @@ class _BaseBuffer:
 class RxBuffer(_BaseBuffer):
     __slots__ = ()
 
-    def readexactly(self, n: int) -> bytes | None:
+    def readexactly(self, n: int) -> bytearray:
         if len(self) < n:
-            return None
+            raise ValueError(f"Buffer size ({len(self)}) is less than {n}")
 
         data = self._data[:n]
         del self._data[:n]
 
         return data
 
-    def readall(self) -> bytes:
+    def readall(self) -> bytearray:
         data, self._data = self._data, bytearray()
-        return bytes(data)
+        return data
 
-    def peekexactly(self, n: int, offset: int = 0) -> bytes | None:
+    def peekexactly(self, n: int, offset: int = 0) -> bytearray:
         if len(self) < (n + offset):
-            return None
+            raise ValueError(f"Buffer size ({len(self)}) is less than {n}")
 
         return self._data[offset:offset+n]
 
@@ -47,12 +47,14 @@ class RxBuffer(_BaseBuffer):
         if not data:
             return
         if self._ctr:
+            # TODO: inplace decrypt?
             data = ctr256_decrypt(data, *self._ctr)
         self._data += data
 
     def deobfuscate(self, decrypt: CtrTuple, decrypt_existing: bool = True) -> None:
         self._ctr = decrypt
-        if decrypt_existing and self._data:
+        if decrypt_existing and self._data and self._ctr:
+            # TODO: inplace decrypt
             self._data = bytearray(ctr256_decrypt(self._data, *self._ctr))
 
 
@@ -67,10 +69,11 @@ class TxBuffer(_BaseBuffer):
             assert data._ctr is None
             data = data.get_data()
         if self._ctr:
+            # TODO: inplace encrypt
             data = ctr256_encrypt(data, *self._ctr)
         self._data += data
 
-    def get_data(self) -> bytes:
+    def get_data(self) -> bytearray:
         data, self._data = self._data, bytearray()
         return data
 
