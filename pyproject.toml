@@ -37,10 +37,9 @@ ws = [
     "wsproto (>=1.3.2,<2.0)",
 ]
 
-
 [dependency-groups]
 dev = [
-    "pytest>=9.0.2,<10",
+    "pytest>=9.1.1,<10",
     "pytest-cov>=7.1.0,<8",
 ]
 
